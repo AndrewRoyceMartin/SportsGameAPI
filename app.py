@@ -244,6 +244,91 @@ def render_rankings(elo):
         st.bar_chart(chart_data, horizontal=True)
 
 
+def render_best_bets(upcoming, elo, home_adv):
+    st.subheader("Top Confidence Picks")
+
+    if not upcoming:
+        st.info("No upcoming games found for the selected league and date range.")
+        return
+
+    rows = []
+    for fx in upcoming:
+        h = fx["home_team"]
+        a = fx["away_team"]
+        r_h = float(elo.get(h, 1500.0))
+        r_a = float(elo.get(a, 1500.0))
+        p_home = elo_win_prob(r_h, r_a, home_adv=home_adv)
+        p_away = 1.0 - p_home
+
+        if p_home >= 0.5:
+            pick = h
+            confidence = p_home
+        else:
+            pick = a
+            confidence = p_away
+
+        rows.append({
+            "date": format_date(fx.get("date_utc", "")),
+            "time": fx.get("time", ""),
+            "home": h,
+            "away": a,
+            "home_elo": round(r_h, 1),
+            "away_elo": round(r_a, 1),
+            "p_home": p_home,
+            "p_away": p_away,
+            "pick": pick,
+            "confidence": confidence,
+            "round": fx.get("league_round", ""),
+            "elo_diff": abs(r_h - r_a),
+        })
+
+    rows.sort(key=lambda r: r["confidence"], reverse=True)
+
+    st.caption(f"All {len(rows)} upcoming game(s) ranked by prediction confidence")
+
+    for i, r in enumerate(rows[:3]):
+        col1, col2, col3 = st.columns([2, 1, 1])
+        with col1:
+            st.markdown(f"**{r['home']}** vs **{r['away']}**")
+            st.caption(f"{r['date']} {r['time']}  ·  {r['round']}")
+        with col2:
+            st.metric("Pick", r["pick"])
+        with col3:
+            st.metric("Confidence", f"{r['confidence']:.1%}")
+
+    if len(rows) > 3:
+        st.divider()
+
+    display_rows = []
+    for r in rows:
+        display_rows.append({
+            "Date": r["date"],
+            "Time": r["time"],
+            "Home": r["home"],
+            "Away": r["away"],
+            "Home Elo": r["home_elo"],
+            "Away Elo": r["away_elo"],
+            "Elo Gap": round(r["elo_diff"], 1),
+            "P(Home)": f"{r['p_home']:.1%}",
+            "P(Away)": f"{r['p_away']:.1%}",
+            "Pick": r["pick"],
+            "Confidence": f"{r['confidence']:.1%}",
+            "Round": r["round"],
+        })
+
+    df = pd.DataFrame(display_rows)
+    st.dataframe(
+        df,
+        use_container_width=True,
+        hide_index=True,
+        column_config={
+            "Home Elo": st.column_config.NumberColumn(format="%.1f"),
+            "Away Elo": st.column_config.NumberColumn(format="%.1f"),
+            "Elo Gap": st.column_config.NumberColumn(format="%.1f"),
+        },
+    )
+
+
 def render_recent_results(completed):
     st.subheader("Recent Results")
 
@@ -328,9 +413,12 @@ def main():
     render_metrics(completed, upcoming, elo)
     st.divider()
 
-    tab_predict, tab_rankings, tab_results = st.tabs(
-        ["Predictions", "Rankings", "Recent Results"]
+    tab_best, tab_predict, tab_rankings, tab_results = st.tabs(
+        ["Best Bets", "All Predictions", "Rankings", "Recent Results"]
     )
+
+    with tab_best:
+        render_best_bets(upcoming, elo, home_adv)
 
     with tab_predict:
         render_predictions(upcoming, elo, home_adv, num_predictions)
