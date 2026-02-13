@@ -4,10 +4,12 @@ version = "0.1.0"
 description = "Add your description here"
 requires-python = ">=3.11"
 dependencies = [
+    "apify-client>=2.4.1",
     "numpy>=2.4.2",
     "pandas>=2.3.3",
     "python-dateutil>=2.9.0.post0",
     "requests>=2.32.5",
     "scikit-learn>=1.8.0",
     "streamlit>=1.54.0",
+    "thefuzz>=0.22.1",
 ]
