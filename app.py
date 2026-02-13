@@ -329,6 +329,102 @@ def render_best_bets(upcoming, elo, home_adv):
     )
 
 
+def render_team_search(completed, upcoming, elo, home_adv):
+    st.subheader("Team Search")
+
+    if not elo:
+        st.info("No team data available yet.")
+        return
+
+    team_names = sorted(elo.keys())
+    selected_team = st.selectbox("Search for a team", options=[""] + team_names, index=0)
+
+    if not selected_team:
+        st.caption("Select a team above to view their profile.")
+        return
+
+    rating = elo.get(selected_team, 1500.0)
+    sorted_teams = sorted(elo.items(), key=lambda x: x[1], reverse=True)
+    rank = next((i for i, (t, _) in enumerate(sorted_teams, 1) if t == selected_team), len(sorted_teams))
+
+    col1, col2, col3 = st.columns(3)
+    col1.metric("Elo Rating", f"{rating:.1f}")
+    col2.metric("League Rank", f"{rank} / {len(sorted_teams)}")
+    col3.metric("vs Average", f"{rating - 1500.0:+.1f}")
+
+    team_completed = [g for g in completed if g["home_team"] == selected_team or g["away_team"] == selected_team]
+    team_upcoming = [g for g in upcoming if g["home_team"] == selected_team or g["away_team"] == selected_team]
+
+    if team_completed:
+        wins = sum(1 for g in team_completed if (g["home_score"] > g["away_score"] and g["home_team"] == selected_team) or (g["away_score"] > g["home_score"] and g["away_team"] == selected_team))
+        draws = sum(1 for g in team_completed if g["home_score"] == g["away_score"])
+        losses = len(team_completed) - wins - draws
+
+        c1, c2, c3, c4 = st.columns(4)
+        c1.metric("Played", len(team_completed))
+        c2.metric("Wins", wins)
+        c3.metric("Draws", draws)
+        c4.metric("Losses", losses)
+
+    if team_upcoming:
+        st.markdown("---")
+        st.markdown("**Upcoming Matches**")
+        rows = []
+        for fx in team_upcoming:
+            h = fx["home_team"]
+            a = fx["away_team"]
+            r_h = float(elo.get(h, 1500.0))
+            r_a = float(elo.get(a, 1500.0))
+            p_home = elo_win_prob(r_h, r_a, home_adv=home_adv)
+            p_away = 1.0 - p_home
+            pick = h if p_home >= 0.5 else a
+            confidence = p_home if p_home >= 0.5 else p_away
+
+            rows.append({
+                "Date": format_date(fx.get("date_utc", "")),
+                "Time": fx.get("time", ""),
+                "Home": h,
+                "Away": a,
+                "P(Home)": f"{p_home:.1%}",
+                "P(Away)": f"{p_away:.1%}",
+                "Pick": pick,
+                "Confidence": f"{confidence:.1%}",
+            })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+    if team_completed:
+        st.markdown("---")
+        st.markdown("**Recent Results**")
+        recent = list(team_completed[-10:])
+        recent.reverse()
+        rows = []
+        for g in recent:
+            hs = g.get("home_score", 0)
+            as_ = g.get("away_score", 0)
+            if g["home_team"] == selected_team:
+                opponent = g["away_team"]
+                venue = "Home"
+            else:
+                opponent = g["home_team"]
+                venue = "Away"
+
+            if (hs > as_ and g["home_team"] == selected_team) or (as_ > hs and g["away_team"] == selected_team):
+                result = "Win"
+            elif hs == as_:
+                result = "Draw"
+            else:
+                result = "Loss"
+
+            rows.append({
+                "Date": format_date(g.get("date_utc", "")),
+                "Opponent": opponent,
+                "Venue": venue,
+                "Score": f"{hs} - {as_}",
+                "Result": result,
+            })
+        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+
 def render_recent_results(completed):
     st.subheader("Recent Results")
 
@@ -413,8 +509,8 @@ def main():
     render_metrics(completed, upcoming, elo)
     st.divider()
 
-    tab_best, tab_predict, tab_rankings, tab_results = st.tabs(
-        ["Best Bets", "All Predictions", "Rankings", "Recent Results"]
+    tab_best, tab_predict, tab_team, tab_rankings, tab_results = st.tabs(
+        ["Best Bets", "All Predictions", "Team Search", "Rankings", "Recent Results"]
     )
 
     with tab_best:
@@ -422,6 +518,9 @@ def main():
 
     with tab_predict:
         render_predictions(upcoming, elo, home_adv, num_predictions)
+
+    with tab_team:
+        render_team_search(completed, upcoming, elo, home_adv)
 
     with tab_rankings:
         render_rankings(elo)
