@@ -8,6 +8,15 @@ from api_client import SportsAPIClient
 from features import build_elo_ratings, elo_win_prob
 
 
+def format_date(d: str) -> str:
+    if not d:
+        return ""
+    parts = d.split("-")
+    if len(parts) == 3:
+        return f"{parts[2]}/{parts[1]}/{parts[0]}"
+    return d
+
+
 def env(name: str, default: str | None = None) -> str:
     v = os.getenv(name, default)
     if v is None or v == "":
@@ -125,7 +134,7 @@ def render_predictions(upcoming, elo, home_adv, num_predictions):
             confidence = p_away
 
         rows.append({
-            "Date": fx.get("date_utc", "TBD"),
+            "Date": format_date(fx.get("date_utc", "")),
             "Time": fx.get("time", ""),
             "Home": h,
             "Away": a,
@@ -215,7 +224,7 @@ def render_recent_results(completed):
             result = "Draw"
 
         rows.append({
-            "Date": g.get("date_utc", ""),
+            "Date": format_date(g.get("date_utc", "")),
             "Round": g.get("league_round", ""),
             "Home": g["home_team"],
             "Away": g["away_team"],
