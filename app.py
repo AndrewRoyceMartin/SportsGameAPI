@@ -66,16 +66,31 @@ def fetch_upcoming(league_id: str, from_date: str, to_date: str):
     return client.list_upcoming_games(league_id, from_date, to_date)
 
 
+def _date_chunks(from_date: str, to_date: str, max_days: int = 15):
+    start = datetime.strptime(from_date, "%Y-%m-%d").date()
+    end = datetime.strptime(to_date, "%Y-%m-%d").date()
+    while start <= end:
+        chunk_end = min(start + timedelta(days=max_days - 1), end)
+        yield str(start), str(chunk_end)
+        start = chunk_end + timedelta(days=1)
+
+
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_all_completed(from_date: str, to_date: str):
     client = get_client()
-    return client.list_completed_games("", from_date, to_date)
+    all_games = []
+    for chunk_start, chunk_end in _date_chunks(from_date, to_date):
+        all_games.extend(client.list_completed_games("", chunk_start, chunk_end))
+    return all_games
 
 
 @st.cache_data(ttl=300, show_spinner=False)
 def fetch_all_upcoming(from_date: str, to_date: str):
     client = get_client()
-    return client.list_upcoming_games("", from_date, to_date)
+    all_fixtures = []
+    for chunk_start, chunk_end in _date_chunks(from_date, to_date):
+        all_fixtures.extend(client.list_upcoming_games("", chunk_start, chunk_end))
+    return all_fixtures
 
 
 def render_sidebar():
