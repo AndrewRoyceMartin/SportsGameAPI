@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 from datetime import date, datetime, timedelta
 import streamlit as st
+import altair as alt
 import pandas as pd
 from api_client import SportsAPIClient
 from features import build_elo_ratings, elo_win_prob
@@ -210,7 +211,7 @@ def render_sidebar():
         top_n = st.selectbox("Top N picks", options=[5, 10, 15, 20, 25], index=1)
 
         st.divider()
-        refresh = st.button("Refresh Data", use_container_width=True)
+        refresh = st.button("Refresh Data", width="stretch")
 
     return (
         str(league_id),
@@ -278,7 +279,7 @@ def render_predictions(upcoming, elo, home_adv, num_predictions):
 
     st.dataframe(
         df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "Home Elo": st.column_config.NumberColumn(format="%.1f"),
@@ -311,7 +312,7 @@ def render_rankings(elo):
     with col1:
         st.dataframe(
             df,
-            use_container_width=True,
+            width="stretch",
             hide_index=True,
             column_config={
                 "Elo Rating": st.column_config.NumberColumn(format="%.1f"),
@@ -321,12 +322,21 @@ def render_rankings(elo):
 
     with col2:
         top_n = min(10, len(sorted_teams))
-        chart_data = pd.DataFrame(
-            {"Team": [t for t, _ in sorted_teams[:top_n]],
-             "Rating": [r for _, r in sorted_teams[:top_n]]}
-        )
-        chart_data = chart_data.set_index("Team")
-        st.bar_chart(chart_data, horizontal=True)
+        if top_n > 0:
+            chart_teams = [t for t, _ in sorted_teams[:top_n]]
+            chart_ratings = [r for _, r in sorted_teams[:top_n]]
+            if all(isinstance(r, (int, float)) and r == r for r in chart_ratings):
+                chart_data = pd.DataFrame(
+                    {"Team": chart_teams, "Rating": chart_ratings}
+                )
+                chart = alt.Chart(chart_data).mark_bar().encode(
+                    x=alt.X("Rating:Q", title="Elo Rating"),
+                    y=alt.Y("Team:N", sort="-x", title=None),
+                    tooltip=["Team", "Rating"],
+                ).properties(height=max(top_n * 30, 200))
+                st.altair_chart(chart, width="stretch")
+            else:
+                st.info("Chart unavailable — ratings contain invalid values.")
 
 
 def render_best_bets(upcoming, elo, home_adv):
@@ -411,7 +421,7 @@ def render_best_bets(upcoming, elo, home_adv):
     df = pd.DataFrame(display_rows)
     st.dataframe(
         df,
-        use_container_width=True,
+        width="stretch",
         hide_index=True,
         column_config={
             "Home Elo": st.column_config.NumberColumn(format="%.1f"),
@@ -507,7 +517,7 @@ def render_team_search(completed, upcoming, elo, home_adv, hist_start, hist_end,
                 "Pick": pick,
                 "Confidence": f"{confidence:.1%}",
             })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
     if team_completed:
         st.markdown("---")
@@ -540,7 +550,7 @@ def render_team_search(completed, upcoming, elo, home_adv, hist_start, hist_end,
                 "Score": f"{hs} - {as_}",
                 "Result": result,
             })
-        st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.dataframe(pd.DataFrame(rows), width="stretch", hide_index=True)
 
 
 def render_recent_results(completed):
@@ -575,7 +585,7 @@ def render_recent_results(completed):
         })
 
     df = pd.DataFrame(rows)
-    st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(df, width="stretch", hide_index=True)
 
 
 def render_value_bets(upcoming, elo, home_adv, min_edge, odds_range, top_n):
@@ -588,14 +598,40 @@ def render_value_bets(upcoming, elo, home_adv, min_edge, odds_range, top_n):
             "Apify API token not found. Add APIFY_TOKEN to your Secrets "
             "(Tools -> Secrets) to enable live odds fetching."
         )
-        return
 
+    if has_token:
+        _render_value_bets_fetcher(upcoming, elo, home_adv, min_edge, odds_range, top_n)
+
+    st.divider()
+    st.caption("Saved Picks History")
+    try:
+        history = get_recent_picks(limit=25)
+        if history:
+            hist_rows = []
+            for h in history:
+                hist_rows.append({
+                    "Saved": h.get("created_at", ""),
+                    "Match": f"{h['home_team']} vs {h['away_team']}",
+                    "Selection": h.get("selection", ""),
+                    "Odds": f"{h.get('odds_decimal', 0):.2f}" if h.get("odds_decimal") else "",
+                    "Edge": f"{h.get('edge', 0):.1%}" if h.get("edge") else "",
+                    "Result": h.get("result", "Pending"),
+                    "P/L": f"{h.get('profit_loss', 0):.2f}" if h.get("profit_loss") is not None else "",
+                })
+            st.dataframe(pd.DataFrame(hist_rows), width="stretch", hide_index=True)
+        else:
+            st.info("No saved picks yet. Find value bets and save them above.")
+    except Exception:
+        st.info("No saved picks yet.")
+
+
+def _render_value_bets_fetcher(upcoming, elo, home_adv, min_edge, odds_range, top_n):
     sportsbet_url = st.text_input(
         "Sportsbet URL to scrape",
         value="https://www.sportsbet.com.au/betting/soccer",
     )
 
-    fetch_odds_btn = st.button("Fetch Odds & Find Value", use_container_width=True)
+    fetch_odds_btn = st.button("Fetch Odds & Find Value", width="stretch")
 
     if fetch_odds_btn:
         try:
@@ -659,7 +695,7 @@ def render_value_bets(upcoming, elo, home_adv, min_edge, odds_range, top_n):
 
             st.dataframe(
                 pd.DataFrame(display_rows),
-                use_container_width=True,
+                width="stretch",
                 hide_index=True,
             )
 
@@ -671,28 +707,6 @@ def render_value_bets(upcoming, elo, home_adv, min_edge, odds_range, top_n):
 
         except Exception as e:
             st.error(f"Error fetching odds: {e}")
-
-    st.divider()
-    st.caption("Saved Picks History")
-    try:
-        history = get_recent_picks(limit=25)
-        if history:
-            hist_rows = []
-            for h in history:
-                hist_rows.append({
-                    "Saved": h.get("created_at", ""),
-                    "Match": f"{h['home_team']} vs {h['away_team']}",
-                    "Selection": h.get("selection", ""),
-                    "Odds": f"{h.get('odds_decimal', 0):.2f}" if h.get("odds_decimal") else "",
-                    "Edge": f"{h.get('edge', 0):.1%}" if h.get("edge") else "",
-                    "Result": h.get("result", "Pending"),
-                    "P/L": f"{h.get('profit_loss', 0):.2f}" if h.get("profit_loss") is not None else "",
-                })
-            st.dataframe(pd.DataFrame(hist_rows), use_container_width=True, hide_index=True)
-        else:
-            st.info("No saved picks yet. Find value bets and save them above.")
-    except Exception:
-        st.info("No saved picks yet.")
 
 
 def main():

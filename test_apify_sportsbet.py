@@ -3,14 +3,19 @@ import json
 import requests
 
 APIFY_TOKEN = os.getenv("APIFY_TOKEN")
-ACTOR_ID = os.getenv("SPORTSBET_ACTOR_ID", "lexis-solutions~sportsbet-com-au-scraper")
+ACTOR_ID = os.getenv("SPORTSBET_ACTOR_ID")
 
 if not APIFY_TOKEN:
-    raise RuntimeError("Missing APIFY_TOKEN in Replit Secrets")
+    raise RuntimeError("Missing APIFY_TOKEN")
+
+if not ACTOR_ID:
+    raise RuntimeError("Missing SPORTSBET_ACTOR_ID")
+
+TEST_URL = "https://www.sportsbet.com.au/betting/upcoming-sports/basketball-us"
 
 actor_input = {
     "startUrls": [
-        {"url": "https://www.sportsbet.com.au/betting/basketball"}
+        {"url": TEST_URL}
     ]
 }
 
@@ -19,12 +24,40 @@ params = {
     "token": APIFY_TOKEN,
     "format": "json",
     "clean": "true",
-    "limit": 5
+    "limit": 1
 }
 
-r = requests.post(url, params=params, json=actor_input, timeout=300)
-r.raise_for_status()
+response = requests.post(
+    url,
+    params=params,
+    json=actor_input,
+    timeout=600
+)
+response.raise_for_status()
 
-items = r.json()
-print(f"Fetched {len(items)} items (showing up to 5):\n")
-print(json.dumps(items, indent=2)[:4000])
+items = response.json()
+
+print(f"\nTop-level items returned: {len(items)}\n")
+print("Top-level keys:", list(items[0].keys()), "\n")
+
+results = items[0].get("results", [])
+print(f"Results count: {len(results)}\n")
+
+if not results:
+    print("No results found.")
+    exit()
+
+first = results[0]
+print("First result keys:", list(first.keys()), "\n")
+
+print("First result (truncated):")
+print(json.dumps(first, indent=2)[:3000])
+
+# EXTRA: explicitly inspect participants if present
+participants = first.get("participants")
+if participants:
+    print("\nParticipants found:")
+    for p in participants:
+        print(f"- {p.get('name')}: {p.get('data')}")
+else:
+    print("\nNo participants field found in first result.")

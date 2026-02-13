@@ -94,6 +94,7 @@ class SportsAPIClient:
                 "home_score": score[0],
                 "away_score": score[1],
                 "league_name": ev.get("league_name", ""),
+                "country_name": ev.get("country_name", ""),
                 "league_round": ev.get("league_round", ""),
                 "stadium": ev.get("event_stadium", ""),
                 "home_logo": ev.get("home_team_logo", ""),
