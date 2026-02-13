@@ -1,0 +1,25 @@
+# Secrets / config
+.env
+*.env
+config.json
+config*.json
+secrets.*
+*.pem
+*.key
+
+# Databases / outputs
+*.sqlite
+*.db
+*.log
+*.csv
+
+# Python
+__pycache__/
+*.pyc
+.venv/
+venv/
+.envrc
+
+# Replit
+.replit
+replit.nix
