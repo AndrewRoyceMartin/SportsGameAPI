@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 import streamlit as st
 import pandas as pd
 from api_client import SportsAPIClient
@@ -15,6 +15,23 @@ def format_date(d: str) -> str:
     if len(parts) == 3:
         return f"{parts[2]}/{parts[1]}/{parts[0]}"
     return d
+
+
+def parse_date_input(text: str) -> date | None:
+    for fmt in ("%d/%m/%Y", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(text.strip(), fmt).date()
+        except ValueError:
+            continue
+    return None
+
+
+def date_to_display(d: date) -> str:
+    return d.strftime("%d/%m/%Y")
+
+
+def date_to_api(d: date) -> str:
+    return d.strftime("%Y-%m-%d")
 
 
 def env(name: str, default: str | None = None) -> str:
@@ -76,12 +93,34 @@ def render_sidebar():
         today = date.today()
 
         st.caption("Historical games (for Elo ratings)")
-        hist_start = st.date_input("From", value=today - timedelta(days=180))
-        hist_end = st.date_input("To", value=today - timedelta(days=1))
+        hist_start_str = st.text_input(
+            "From (dd/mm/yyyy)",
+            value=date_to_display(today - timedelta(days=180)),
+        )
+        hist_end_str = st.text_input(
+            "To (dd/mm/yyyy)",
+            value=date_to_display(today - timedelta(days=1)),
+        )
+
+        hist_start_d = parse_date_input(hist_start_str)
+        hist_end_d = parse_date_input(hist_end_str)
+        if hist_start_d is None or hist_end_d is None:
+            st.error("Invalid historical date format. Use dd/mm/yyyy.")
 
         st.caption("Upcoming games (for predictions)")
-        upcoming_start = st.date_input("From ", value=today)
-        upcoming_end = st.date_input("To ", value=today + timedelta(days=14))
+        upcoming_start_str = st.text_input(
+            "From  (dd/mm/yyyy)",
+            value=date_to_display(today),
+        )
+        upcoming_end_str = st.text_input(
+            "To  (dd/mm/yyyy)",
+            value=date_to_display(today + timedelta(days=14)),
+        )
+
+        upcoming_start_d = parse_date_input(upcoming_start_str)
+        upcoming_end_d = parse_date_input(upcoming_end_str)
+        if upcoming_start_d is None or upcoming_end_d is None:
+            st.error("Invalid upcoming date format. Use dd/mm/yyyy.")
 
         st.divider()
         st.subheader("Elo Settings")
@@ -94,9 +133,12 @@ def render_sidebar():
 
     return (
         str(league_id),
-        str(hist_start), str(hist_end),
-        str(upcoming_start), str(upcoming_end),
+        date_to_api(hist_start_d) if hist_start_d else "",
+        date_to_api(hist_end_d) if hist_end_d else "",
+        date_to_api(upcoming_start_d) if upcoming_start_d else "",
+        date_to_api(upcoming_end_d) if upcoming_end_d else "",
         home_adv, k_factor, num_predictions, refresh,
+        hist_start_d is None or hist_end_d is None or upcoming_start_d is None or upcoming_end_d is None,
     )
 
 
@@ -248,10 +290,14 @@ def main():
         hist_start, hist_end,
         upcoming_start, upcoming_end,
         home_adv, k_factor, num_predictions, refresh,
+        has_date_error,
     ) = render_sidebar()
 
     if refresh:
         st.cache_data.clear()
+
+    if has_date_error:
+        st.stop()
 
     try:
         with st.spinner("Fetching completed games..."):
