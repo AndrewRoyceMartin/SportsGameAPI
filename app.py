@@ -352,6 +352,8 @@ def render_best_bets(upcoming, elo, home_adv):
             "pick": pick,
             "confidence": confidence,
             "round": fx.get("league_round", ""),
+            "league": fx.get("league_name", ""),
+            "country": fx.get("country_name", ""),
             "elo_diff": abs(r_h - r_a),
         })
 
@@ -363,7 +365,10 @@ def render_best_bets(upcoming, elo, home_adv):
         col1, col2, col3 = st.columns([2, 1, 1])
         with col1:
             st.markdown(f"**{r['home']}** vs **{r['away']}**")
-            st.caption(f"{r['date']} {r['time']}  ·  {r['round']}")
+            league_info = r['league']
+            if r['country']:
+                league_info = f"{r['league']} · {r['country']}"
+            st.caption(f"{r['date']} {r['time']}  ·  {league_info}  ·  {r['round']}")
         with col2:
             st.metric("Pick", r["pick"])
         with col3:
@@ -377,6 +382,8 @@ def render_best_bets(upcoming, elo, home_adv):
         display_rows.append({
             "Date": r["date"],
             "Time": r["time"],
+            "League": r["league"],
+            "Country": r["country"],
             "Home": r["home"],
             "Away": r["away"],
             "Home Elo": r["home_elo"],

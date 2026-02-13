@@ -124,6 +124,7 @@ class SportsAPIClient:
                 "home_team_key": ev.get("home_team_key", ""),
                 "away_team_key": ev.get("away_team_key", ""),
                 "league_name": ev.get("league_name", ""),
+                "country_name": ev.get("country_name", ""),
                 "league_round": ev.get("league_round", ""),
                 "stadium": ev.get("event_stadium", ""),
                 "home_logo": ev.get("home_team_logo", ""),
