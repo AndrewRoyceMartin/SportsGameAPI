@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import date, timedelta
 from api_client import SportsAPIClient
 from features import build_elo_ratings, elo_win_prob
 
@@ -15,25 +16,25 @@ def env(name: str, default: str | None = None) -> str:
 def main() -> None:
     base_url = env("SPORTS_API_BASE_URL")
     api_key = env("SPORTS_API_KEY")
-
-    sport = os.getenv("SPORT", "soccer")
-    league = os.getenv("LEAGUE", "EPL")
-    season = os.getenv("SEASON", "2025-2026")
+    league_id = os.getenv("LEAGUE", "152")
 
     client = SportsAPIClient(base_url=base_url, api_key=api_key)
 
-    # Pull data
-    games = client.list_completed_games(sport=sport, league=league, season=season)
-    upcoming = client.list_upcoming_games(sport=sport, league=league, season=season)
+    today = date.today()
+    hist_start = str(today - timedelta(days=180))
+    hist_end = str(today - timedelta(days=1))
+    upcoming_start = str(today)
+    upcoming_end = str(today + timedelta(days=14))
+
+    games = client.list_completed_games(league_id, hist_start, hist_end)
+    upcoming = client.list_upcoming_games(league_id, upcoming_start, upcoming_end)
 
     if not games:
-        raise RuntimeError("No historical games returned. Check your API mapping/endpoints.")
+        raise RuntimeError("No historical games returned. Check your API key and league ID.")
 
-    # Build Elo
     elo = build_elo_ratings(games)
 
-    # Predict
-    print(f"\nPredictions for {league} ({season})")
+    print(f"\nPredictions (League {league_id})")
     print("-" * 70)
     for fx in upcoming[:25]:
         h, a = fx["home_team"], fx["away_team"]

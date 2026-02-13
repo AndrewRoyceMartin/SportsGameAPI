@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from datetime import date, timedelta
 import streamlit as st
 import pandas as pd
 from api_client import SportsAPIClient
@@ -14,30 +15,67 @@ def env(name: str, default: str | None = None) -> str:
     return v
 
 
-@st.cache_data(ttl=300, show_spinner=False)
-def fetch_data(sport: str, league: str, season: str):
-    base_url = env("SPORTS_API_BASE_URL")
-    api_key = env("SPORTS_API_KEY")
-    client = SportsAPIClient(base_url=base_url, api_key=api_key)
+def get_client() -> SportsAPIClient:
+    return SportsAPIClient(
+        base_url=env("SPORTS_API_BASE_URL"),
+        api_key=env("SPORTS_API_KEY"),
+    )
 
-    completed = client.list_completed_games(sport=sport, league=league, season=season)
-    upcoming = client.list_upcoming_games(sport=sport, league=league, season=season)
-    return completed, upcoming
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_leagues():
+    client = get_client()
+    return client.list_leagues()
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_completed(league_id: str, from_date: str, to_date: str):
+    client = get_client()
+    return client.list_completed_games(league_id, from_date, to_date)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_upcoming(league_id: str, from_date: str, to_date: str):
+    client = get_client()
+    return client.list_upcoming_games(league_id, from_date, to_date)
 
 
 def render_sidebar():
     with st.sidebar:
         st.header("Configuration")
 
-        sport = st.selectbox(
-            "Sport",
-            options=["soccer", "basketball", "baseball", "hockey", "football"],
-            index=0,
-        )
+        try:
+            leagues_raw = fetch_leagues()
+        except Exception as e:
+            st.error(f"Could not load leagues: {e}")
+            leagues_raw = []
 
-        league = st.text_input("League", value=os.getenv("LEAGUE", "EPL"))
-        season = st.text_input("Season", value=os.getenv("SEASON", "2025-2026"))
+        league_options = {}
+        for lg in leagues_raw:
+            label = f"{lg.get('league_name', '')} ({lg.get('country_name', '')})"
+            league_options[label] = lg.get("league_key", "")
 
+        if league_options:
+            selected_label = st.selectbox("League", options=sorted(league_options.keys()))
+            league_id = league_options[selected_label]
+        else:
+            league_id = st.text_input("League ID", value="152")
+
+        st.divider()
+        st.subheader("Date Ranges")
+
+        today = date.today()
+
+        st.caption("Historical games (for Elo ratings)")
+        hist_start = st.date_input("From", value=today - timedelta(days=180))
+        hist_end = st.date_input("To", value=today - timedelta(days=1))
+
+        st.caption("Upcoming games (for predictions)")
+        upcoming_start = st.date_input("From ", value=today)
+        upcoming_end = st.date_input("To ", value=today + timedelta(days=14))
+
+        st.divider()
+        st.subheader("Elo Settings")
         home_adv = st.slider("Home Advantage (Elo pts)", 0, 150, 65, step=5)
         k_factor = st.slider("K-Factor", 5, 50, 20, step=1)
         num_predictions = st.slider("Predictions to show", 5, 50, 25, step=5)
@@ -45,7 +83,12 @@ def render_sidebar():
         st.divider()
         refresh = st.button("Refresh Data", use_container_width=True)
 
-    return sport, league, season, home_adv, k_factor, num_predictions, refresh
+    return (
+        str(league_id),
+        str(hist_start), str(hist_end),
+        str(upcoming_start), str(upcoming_end),
+        home_adv, k_factor, num_predictions, refresh,
+    )
 
 
 def render_metrics(completed, upcoming, elo):
@@ -62,7 +105,7 @@ def render_predictions(upcoming, elo, home_adv, num_predictions):
     st.subheader("Upcoming Match Predictions")
 
     if not upcoming:
-        st.info("No upcoming games found for this league and season.")
+        st.info("No upcoming games found for the selected league and date range.")
         return
 
     rows = []
@@ -83,14 +126,16 @@ def render_predictions(upcoming, elo, home_adv, num_predictions):
 
         rows.append({
             "Date": fx.get("date_utc", "TBD"),
+            "Time": fx.get("time", ""),
             "Home": h,
             "Away": a,
             "Home Elo": round(r_h, 1),
             "Away Elo": round(r_a, 1),
-            "P(Home Win)": f"{p_home:.1%}",
-            "P(Away Win)": f"{p_away:.1%}",
+            "P(Home)": f"{p_home:.1%}",
+            "P(Away)": f"{p_away:.1%}",
             "Pick": pick,
             "Confidence": f"{confidence:.1%}",
+            "Round": fx.get("league_round", ""),
         })
 
     df = pd.DataFrame(rows)
@@ -106,7 +151,7 @@ def render_predictions(upcoming, elo, home_adv, num_predictions):
     )
 
 
-def render_rankings(elo, home_adv):
+def render_rankings(elo):
     st.subheader("Current Elo Rankings")
 
     if not elo:
@@ -155,7 +200,7 @@ def render_recent_results(completed):
         st.info("No completed games found.")
         return
 
-    recent = completed[-10:]
+    recent = list(completed[-15:])
     recent.reverse()
 
     rows = []
@@ -171,10 +216,12 @@ def render_recent_results(completed):
 
         rows.append({
             "Date": g.get("date_utc", ""),
+            "Round": g.get("league_round", ""),
             "Home": g["home_team"],
             "Away": g["away_team"],
             "Score": f"{hs} - {as_}",
             "Result": result,
+            "Stadium": g.get("stadium", ""),
         })
 
     df = pd.DataFrame(rows)
@@ -182,26 +229,43 @@ def render_recent_results(completed):
 
 
 def main():
-    st.set_page_config(page_title="Sports Predictor", page_icon="🏆", layout="wide")
+    st.set_page_config(page_title="Sports Predictor", page_icon="⚽", layout="wide")
 
-    st.title("🏆 Sports Predictor")
-    st.caption("Elo-based match predictions powered by historical data")
+    st.title("⚽ Sports Predictor")
+    st.caption("Elo-based match predictions powered by AllSportsAPI")
 
-    sport, league, season, home_adv, k_factor, num_predictions, refresh = render_sidebar()
+    (
+        league_id,
+        hist_start, hist_end,
+        upcoming_start, upcoming_end,
+        home_adv, k_factor, num_predictions, refresh,
+    ) = render_sidebar()
 
     if refresh:
         st.cache_data.clear()
 
     try:
-        with st.spinner("Fetching data from API..."):
-            completed, upcoming = fetch_data(sport, league, season)
+        with st.spinner("Fetching completed games..."):
+            completed = fetch_completed(league_id, hist_start, hist_end)
     except Exception as e:
-        st.error(f"Failed to fetch data: {e}")
+        st.error(f"Failed to fetch completed games: {e}")
         st.info("Check that your API URL and key are configured correctly in Secrets.")
         return
 
+    try:
+        with st.spinner("Fetching upcoming games..."):
+            upcoming = fetch_upcoming(league_id, upcoming_start, upcoming_end)
+    except Exception as e:
+        st.warning(f"Could not fetch upcoming games: {e}")
+        upcoming = []
+
     if not completed:
-        st.warning("No historical games returned. Check your API endpoints, league, and season settings.")
+        st.warning(
+            "No completed games found for this league and date range. "
+            "Try expanding the historical date range or selecting a different league."
+        )
+        if upcoming:
+            st.info(f"Found {len(upcoming)} upcoming game(s), but no history to build Elo ratings from.")
         return
 
     elo = build_elo_ratings(completed, k=k_factor, home_adv=home_adv)
@@ -209,13 +273,15 @@ def main():
     render_metrics(completed, upcoming, elo)
     st.divider()
 
-    tab_predict, tab_rankings, tab_results = st.tabs(["Predictions", "Rankings", "Recent Results"])
+    tab_predict, tab_rankings, tab_results = st.tabs(
+        ["Predictions", "Rankings", "Recent Results"]
+    )
 
     with tab_predict:
         render_predictions(upcoming, elo, home_adv, num_predictions)
 
     with tab_rankings:
-        render_rankings(elo, home_adv)
+        render_rankings(elo)
 
     with tab_results:
         render_recent_results(completed)

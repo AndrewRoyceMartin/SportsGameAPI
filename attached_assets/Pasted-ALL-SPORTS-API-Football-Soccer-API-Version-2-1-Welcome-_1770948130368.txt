@@ -1,0 +1,1697 @@
+ALL SPORTS API - Football (Soccer) API Version 2.1
+Welcome to the documentation page of AllSportsAPI.com football service. Please find bellow the full list of the methods you can relay on to get real time football data helping you build awesome applications.
+
+Countries
+
+Method
+GET/POST apiv2.allsportsapi.com/football?met=Countries
+
+Returns list of supported countries included in your current subscription plan
+
+
+Parameters
+Parameter	Description
+met	API method name
+APIkey	Authorization code generated from your allsportsapi account
+
+Request URL
+https://apiv2.allsportsapi.com/football/?met=Countries&APIkey=!_your_account_APIkey_!
+
+JSON Response
+{
+  "success": 1,
+  "result": [
+    {
+        "country_key": "10",
+        "country_name": "Albania",
+        "country_iso2": null,
+        "country_logo": "https://apiv2.allsportsapi.com/logo/logo_country/10_albania.png"
+    },
+    {
+        "country_key": "11",
+        "country_name": "Algeria",
+        "country_iso2": null,
+        "country_logo": "https://apiv2.allsportsapi.com/logo/logo_country/11_algeria.png"
+    },
+    {
+        "country_key": "12",
+        "country_name": "Andorra",
+        "country_iso2": null,
+        "country_logo": "https://apiv2.allsportsapi.com/logo/logo_country/12_andorra.png"
+    },
+    {
+        "country_key": "13",
+        "country_name": "Angola",
+        "country_iso2": null,
+        "country_logo": "https://apiv2.allsportsapi.com/logo/logo_country/13_angola.png"
+    },
+    ......
+  ]
+}
+                
+
+PHP call example
+
+$APIkey='!_your_account_APIkey_!';
+
+$curl_options = array(
+  CURLOPT_URL => "https://apiv2.allsportsapi.com/football/?met=Countries&APIkey=$APIkey",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => false,
+  CURLOPT_TIMEOUT => 30,
+  CURLOPT_CONNECTTIMEOUT => 5
+);
+
+$curl = curl_init();
+curl_setopt_array( $curl, $curl_options );
+$result = curl_exec( $curl );
+
+$result = (array) json_decode($result);
+
+var_dump($result);
+
+                
+
+
+Leagues
+
+Method
+GET/POST apiv2.allsportsapi.com/football?met=Leagues
+
+Returns list of supported competitions included in your current subscription plan
+
+
+Parameters
+Parameter	Description
+met	API method name
+APIkey	Authorization code generated from your allsportsapi account
+countryId	Country ID - if set only leagues from specific country will be returned (Optional)
+
+Request URL
+https://apiv2.allsportsapi.com/football/?met=Leagues&APIkey=!_your_account_APIkey_!
+
+JSON Response
+{
+  "success": 1,
+  "result": [
+    {
+         "league_key": "205",
+         "league_name": "Coppa Italia",
+         "country_key": "5",
+         "country_name": "Italy",
+         "league_logo": "https://apiv2.allsportsapi.com/logo/logo_leagues/205_coppa-italia.png",
+         "country_logo": "https://apiv2.allsportsapi.com/logo/logo_country/5_italy.png"
+     },
+     {
+         "league_key": "206",
+         "league_name": "Serie B",
+         "country_key": "5",
+         "country_name": "Italy",
+         "league_logo": "https://apiv2.allsportsapi.com/logo/logo_leagues/206_serie-b.png",
+         "country_logo": "https://apiv2.allsportsapi.com/logo/logo_country/5_italy.png"
+     },
+     {
+         "league_key": "207",
+         "league_name": "Serie A",
+         "country_key": "5",
+         "country_name": "Italy",
+         "league_logo": "https://apiv2.allsportsapi.com/logo/logo_leagues/207_serie-a.png",
+         "country_logo": "https://apiv2.allsportsapi.com/logo/logo_country/5_italy.png"
+     },
+     .......
+  ]
+}
+            
+
+PHP call example
+
+$APIkey=!_your_account_APIkey_!;
+$countryId = 5;
+
+$curl_options = array(
+  CURLOPT_URL => "https://apiv2.allsportsapi.com/football/?met=Leagues&APIkey=$APIkey&countryId=$countryId",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => false,
+  CURLOPT_TIMEOUT => 30,
+  CURLOPT_CONNECTTIMEOUT => 5
+);
+
+$curl = curl_init();
+curl_setopt_array( $curl, $curl_options );
+$result = curl_exec( $curl );
+
+$result = (array) json_decode($result);
+
+var_dump($result);
+
+            
+
+
+Fixtures
+
+Method
+GET/POST apiv2.allsportsapi.com/football?met=Fixtures
+
+Returns events included in your current subscription plan
+
+
+Parameters
+Parameter	Description
+met	API method name
+APIkey	Authorization code generated from your allsportsapi account
+from	Start date (yyyy-mm-dd)
+to	Stop date (yyyy-mm-dd)
+timezone	The timezone where you want to receive the data in tz format (exemple: America/New_York). Default timezone: Europe/Berlin (Optional)
+countryId	Country ID - if set only events from specific country will be returned (Optional)
+leagueId	League ID - if set events from specific league will be returned (Optional)
+matchId	Match ID - if set only details from specific match will be returned (Optional)
+teamId	Team ID - if set only details from specific team will be returned (Optional)
+leagueGroup	leagueGroup - if set only details from specific group will be returned (Optional)
+withPlayerStats	withPlayerStats - if you want to receive the players' statistics for that match you must set this parameter with any value (for example you can send value '1') (Optional)
+
+Request URL
+https://apiv2.allsportsapi.com/football/?met=Fixtures&APIkey=!_your_account_APIkey_!&from=2021-05-18&to=2021-05-18
+
+JSON Response
+{
+  "success": 1,
+  "result": [
+  {
+        "event_key": "59409",
+        "event_date": "2021-05-18",
+        "event_time": "20:30",
+        "event_home_team": "Lazio",
+        "home_team_key": "93",
+        "event_away_team": "Torino",
+        "away_team_key": "4973",
+        "event_halftime_result": "0 - 0",
+        "event_final_result": "0 - 0",
+        "event_ft_result": "0 - 0",
+        "event_penalty_result": "",
+        "event_status": "Finished",
+        "country_name": "Italy",
+        "league_name": "Serie A",
+        "league_key": "207",
+        "league_round": "Round 25",
+        "league_season": "2020/2021",
+        "event_live": "0",
+        "event_stadium": "Stadio Olimpico (Roma)",
+        "event_referee": "M. Fabbri",
+        "home_team_logo": "https://apiv2.allsportsapi.com/logo/93_lazio.jpg",
+        "away_team_logo": "https://apiv2.allsportsapi.com/logo/4973_torino.jpg",
+        "event_country_key": "5",
+        "league_logo": "https://apiv2.allsportsapi.com/logo/logo_leagues/207_serie-a.png",
+        "country_logo": "https://apiv2.allsportsapi.com/logo/logo_country/5_italy.png",
+        "event_home_formation": "",
+        "event_away_formation": "",
+        "fk_stage_key": "331",
+        "stage_name": "Current",
+        "league_group": "",
+        "goalscorers": [],
+        "substitutes": [
+            {
+                "time": "61",
+                "home_scorer": {
+                    "in": "M. Fares",
+                    "out": "S. Lulic"
+                },
+                "score": "substitution",
+                "away_scorer": []
+            },
+            {
+                "time": "68",
+                "home_scorer": {
+                    "in": "Lucas Leiva",
+                    "out": "G. Escalante"
+                },
+                "score": "substitution",
+                "away_scorer": []
+            },
+            .................
+        ],
+        "cards": [
+            {
+                "time": "28",
+                "home_fault": "T. Strakosha",
+                "card": "yellow card",
+                "away_fault": ""
+            },
+            ..................
+        ],
+        "lineups": {
+            "home_team": {
+                "starting_lineups": [
+                    {
+                        "player": "Thomas Strakosha",
+                        "player_number": "1",
+                        "player_position": "1",
+                        "player_country": null,
+                        "player_key": "979073766"
+                    },
+                    {
+                        "player": "Adam Marusic",
+                        "player_number": "77",
+                        "player_position": "2",
+                        "player_country": null,
+                        "player_key": "988865105"
+                    },
+                    ..........................
+                ],
+                "substitutes": [
+                    {
+                        "player": "Pepe Reina",
+                        "player_number": "25",
+                        "player_position": "0",
+                        "player_country": null,
+                        "player_key": "926105079"
+                    },
+                    {
+                        "player": "Marco Alia",
+                        "player_number": "71",
+                        "player_position": "0",
+                        "player_country": null,
+                        "player_key": "3598033023"
+                    },
+                    ......................
+                ],
+                "coaches": [
+                    {
+                        "coache": "S. Inzaghi",
+                        "coache_country": null
+                    }
+                ],
+                "missing_players": []
+            },
+            "away_team": {
+                "starting_lineups": [
+                    {
+                        "player": "Salvatore Sirigu",
+                        "player_number": "39",
+                        "player_position": "1",
+                        "player_country": null,
+                        "player_key": "72635334"
+                    },
+                    {
+                        "player": "Armando Izzo",
+                        "player_number": "5",
+                        "player_position": "2",
+                        "player_country": null,
+                        "player_key": "3292395742"
+                    },
+                    ............................
+                ],
+                "substitutes": [
+                    {
+                        "player": "Vanja Milinkovic-Savic",
+                        "player_number": "32",
+                        "player_position": "0",
+                        "player_country": null,
+                        "player_key": "3036656066"
+                    },
+                    {
+                        "player": "Samir Ujkani",
+                        "player_number": "18",
+                        "player_position": "0",
+                        "player_country": null,
+                        "player_key": "1358621159"
+                    },
+                    ..................................
+                ],
+                "coaches": [
+                    {
+                        "coache": "D. Nicola",
+                        "coache_country": null
+                    }
+                ],
+                "missing_players": []
+            }
+        },
+        "statistics": [
+            {
+                "type": "Shots Total",
+                "home": "24",
+                "away": "6"
+            },
+            {
+                "type": "Shots On Goal",
+                "home": "7",
+                "away": "3"
+            },
+            {
+                "type": "Shots Off Goal",
+                "home": "12",
+                "away": "3"
+            },
+            ...................
+        ]
+    }
+.......
+  ]
+}
+            
+
+PHP call example
+
+$APIkey=!_your_account_APIkey_!;
+$from = '2021-05-18';
+$to = '2021-05-18';
+
+$curl_options = array(
+  CURLOPT_URL => "https://apiv2.allsportsapi.com/football/?met=Fixtures&APIkey=$APIkey&from=$from&to=$to",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => false,
+  CURLOPT_TIMEOUT => 30,
+  CURLOPT_CONNECTTIMEOUT => 5
+);
+
+$curl = curl_init();
+curl_setopt_array( $curl, $curl_options );
+$result = curl_exec( $curl );
+
+$result = (array) json_decode($result);
+
+var_dump($result);
+
+            
+
+
+H2H (Head to Head)
+
+Method
+GET/POST apiv2.allsportsapi.com/football?met=H2H
+
+Returns the last games between submiteted teams and the last games of each team
+
+
+Parameters
+Parameter	Description
+met	API method name
+APIkey	Authorization code generated from your allsportsapi account
+timezone	The timezone where you want to receive the data in tz format (exemple: America/New_York). Default timezone: Europe/Berlin (Optional)
+firstTeamId	First team Id
+secondTeamId	Second team Id
+
+Request URL
+https://apiv2.allsportsapi.com/football/?met=H2H&APIkey=!_your_account_APIkey_!&firstTeamId=93&secondTeamId=4973
+
+JSON Response
+{
+  "success": 1,
+  "result": {
+    "H2H": [
+            {
+                "event_key": "59409",
+                "event_date": "2021-05-18",
+                "event_time": "20:30",
+                "event_home_team": "Lazio",
+                "home_team_key": "93",
+                "event_away_team": "Torino",
+                "away_team_key": "4973",
+                "event_halftime_result": "0 - 0",
+                "event_final_result": "0 - 0",
+                "event_status": "Finished",
+                "country_name": "Italy",
+                "league_name": "Serie A",
+                "league_key": "207",
+                "league_round": "25",
+                "league_season": "",
+                "event_live": "0",
+                "event_country_key": "5"
+            },
+            {
+                "event_key": "59224",
+                "event_date": "2020-11-01",
+                "event_time": "15:00",
+                "event_home_team": "Torino",
+                "home_team_key": "4973",
+                "event_away_team": "Lazio",
+                "away_team_key": "93",
+                "event_halftime_result": "2 - 1",
+                "event_final_result": "3 - 4",
+                "event_status": "Finished",
+                "country_name": "Italy",
+                "league_name": "Serie A",
+                "league_key": "207",
+                "league_round": "6",
+                "league_season": "",
+                "event_live": "0",
+                "event_country_key": "5"
+            },
+            ..................................
+        ],
+        "firstTeamResults": [
+            {
+                "event_key": "59409",
+                "event_date": "2021-05-18",
+                "event_time": "20:30",
+                "event_home_team": "Lazio",
+                "home_team_key": "93",
+                "event_away_team": "Torino",
+                "away_team_key": "4973",
+                "event_halftime_result": "0 - 0",
+                "event_final_result": "0 - 0",
+                "event_status": "Finished",
+                "country_name": "Italy",
+                "league_name": "Serie A",
+                "league_key": "207",
+                "league_round": "25",
+                "league_season": "",
+                "event_live": "0",
+                "event_country_key": "5"
+            },
+            {
+                "event_key": "138735",
+                "event_date": "2021-05-15",
+                "event_time": "20:45",
+                "event_home_team": "Roma",
+                "home_team_key": "139",
+                "event_away_team": "Lazio",
+                "away_team_key": "93",
+                "event_halftime_result": "1 - 0",
+                "event_final_result": "2 - 0",
+                "event_status": "Finished",
+                "country_name": "Italy",
+                "league_name": "Serie A",
+                "league_key": "207",
+                "league_round": "37",
+                "league_season": "",
+                "event_live": "0",
+                "event_country_key": "5"
+            },
+            ...........................
+        ],
+        "secondTeamResults": [
+            {
+                "event_key": "59409",
+                "event_date": "2021-05-18",
+                "event_time": "20:30",
+                "event_home_team": "Lazio",
+                "home_team_key": "93",
+                "event_away_team": "Torino",
+                "away_team_key": "4973",
+                "event_halftime_result": "0 - 0",
+                "event_final_result": "0 - 0",
+                "event_status": "Finished",
+                "country_name": "Italy",
+                "league_name": "Serie A",
+                "league_key": "207",
+                "league_round": "25",
+                "league_season": "",
+                "event_live": "0",
+                "event_country_key": "5"
+            },
+            {
+                "event_key": "138733",
+                "event_date": "2021-05-15",
+                "event_time": "15:00",
+                "event_home_team": "Spezia",
+                "home_team_key": "4977",
+                "event_away_team": "Torino",
+                "away_team_key": "4973",
+                "event_halftime_result": "2 - 0",
+                "event_final_result": "4 - 1",
+                "event_status": "Finished",
+                "country_name": "Italy",
+                "league_name": "Serie A",
+                "league_key": "207",
+                "league_round": "37",
+                "league_season": "",
+                "event_live": "0",
+                "event_country_key": "5"
+            },
+            .............................
+        ]
+  }
+}
+            
+
+PHP call example
+
+$APIkey=!_your_account_APIkey_!;
+$firstTeamId=93;
+$secondTeamId=4973;
+
+$curl_options = array(
+  CURLOPT_URL => "https://apiv2.allsportsapi.com/football/?met=H2H&APIkey=$APIkey&firstTeamId=$firstTeamId&secondTeamId=$secondTeamId",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => false,
+  CURLOPT_TIMEOUT => 30,
+  CURLOPT_CONNECTTIMEOUT => 5
+);
+
+$curl = curl_init();
+curl_setopt_array( $curl, $curl_options );
+$result = curl_exec( $curl );
+
+$result = (array) json_decode($result);
+
+var_dump($result);
+
+            
+
+
+Livescore
+
+Method
+GET/POST apiv2.allsportsapi.com/football?met=Livescore
+
+Returns playing now events included in your current subscription plan
+
+
+Parameters
+Parameter	Description
+met	API method name
+APIkey	Authorization code generated from your allsportsapi account
+timezone	The timezone where you want to receive the data in tz format (exemple: America/New_York). Default timezone: Europe/Berlin (Optional)
+countryId	Country ID - if set only events from specific country will be returned (Optional)
+leagueId	League ID - if set events from specific league will be returned (Optional)
+matchId	Match ID - if set only details from specific match will be returned (Optional)
+withPlayerStats	withPlayerStats - if you want to receive the players' statistics for that match you must set this parameter with any value (for example you can send value '1') (Optional)
+
+Request URL
+https://apiv2.allsportsapi.com/football/?met=Livescore&APIkey=!_your_account_APIkey_!
+
+JSON Response
+{
+  "success": 1,
+  "result": [
+  {
+        "event_key": "11205",
+        "event_date": "2021-05-21",
+        "event_time": "11:05",
+        "event_home_team": "Newcastle Jets",
+        "home_team_key": "1056",
+        "event_away_team": "Brisbane Roar",
+        "away_team_key": "399",
+        "event_halftime_result": "0 - 1",
+        "event_final_result": "1 - 2",
+        "event_ft_result": "1 - 2",
+        "event_penalty_result": "",
+        "event_status": "74",
+        "country_name": "Australia",
+        "league_name": "A-League - Regular Season",
+        "league_key": "49",
+        "league_round": "22",
+        "league_season": "",
+        "event_live": "1",
+        "event_stadium": "McDonald Jones Stadium",
+        "event_referee": "",
+        "event_country_key": "17",
+        "league_logo": "https://apiv2.allsportsapi.com/logo/logo_leagues/49_a-league.png",
+        "country_logo": "https://apiv2.allsportsapi.com/logo/logo_country/17_australia.png",
+        "event_home_formation": "",
+        "event_away_formation": "",
+        "fk_stage_key": "528",
+        "stage_name": "Regular Season",
+        "goalscorers": [
+            {
+                "time": "34",
+                "home_scorer": "",
+                "score": "0 - 1",
+                "away_scorer": "R. Danzaki"
+            },
+            {
+                "time": "61",
+                "home_scorer": "J. O'Shea (o.g.)",
+                "score": "1 - 1",
+                "away_scorer": ""
+            },
+            {
+                "time": "73",
+                "home_scorer": "",
+                "score": "1 - 2",
+                "away_scorer": "J. O'Shea"
+            }
+        ],
+        "cards": [
+            {
+                "time": "21",
+                "home_fault": "",
+                "card": "yellow card",
+                "away_fault": "M. Gillesphey"
+            },
+            {
+                "time": "42",
+                "home_fault": "J. Hoffman",
+                "card": "yellow card",
+                "away_fault": ""
+            },
+            ........................
+        ],
+        "substitutes": [
+            {
+                "time": "46",
+                "home_scorer": {
+                    "in": "C. O'Toole",
+                    "out": "L. Mauragis"
+                },
+                "score": "substitution",
+                "away_scorer": []
+            },
+            {
+                "time": "46",
+                "home_scorer": {
+                    "in": "A. Abbas",
+                    "out": "A. Goodwin"
+                },
+                "score": "substitution",
+                "away_scorer": []
+            },
+            ..............
+        ],
+        "lineups": {
+            "home_team": {
+                "starting_lineups": [
+                    {
+                        "player": "Jack Duncan",
+                        "player_number": "23",
+                        "player_country": null
+                    },
+                    {
+                        "player": "Johnny Koutroumbis",
+                        "player_number": "2",
+                        "player_country": null
+                    },
+                    .......................
+                ],
+                "substitutes": [
+                    {
+                        "player": "Lewis Italiano",
+                        "player_number": "1",
+                        "player_country": null
+                    },
+                    {
+                        "player": "Lachlan Jackson",
+                        "player_number": "22",
+                        "player_country": null
+                    },
+                    .................
+                ],
+                "substitutes": [
+                    {
+                        "player": "Macklin Freke",
+                        "player_number": "1",
+                        "player_country": null
+                    },
+                    {
+                        "player": "Antonee Burke-Gilroy",
+                        "player_number": "22",
+                        "player_country": null
+                    },
+                    ..................
+                ],
+                "coaches": [
+                    {
+                        "coache": "W. Moon",
+                        "coache_country": null
+                    }
+                ]
+            }
+        },
+        "statistics": [
+            {
+                "type": "Shots Blocked",
+                "home": "1",
+                "away": "6"
+            },
+            {
+                "type": "Shots Inside Box",
+                "home": "3",
+                "away": "8"
+            },
+            {
+                "type": "Shots Outside Box",
+                "home": "3",
+                "away": "8"
+            },
+            ..................
+        ]
+    },
+    .......
+  ]
+}
+            
+
+PHP call example
+
+$APIkey=!_your_account_APIkey_!;
+
+$curl_options = array(
+  CURLOPT_URL => "https://apiv2.allsportsapi.com/football/?met=Livescore&APIkey=$APIkey",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => false,
+  CURLOPT_TIMEOUT => 30,
+  CURLOPT_CONNECTTIMEOUT => 5
+);
+
+$curl = curl_init();
+curl_setopt_array( $curl, $curl_options );
+$result = curl_exec( $curl );
+
+$result = (array) json_decode($result);
+
+var_dump($result);
+
+            
+
+
+Standings
+
+Method
+GET/POST apiv2.allsportsapi.com/football?met=Standings
+
+Returns standings for leagues included in your current subscription plan
+
+
+Parameters
+Parameter	Description
+met	API method name
+APIkey	Authorization code generated from your allsportsapi account
+leagueId	League internal code
+
+Request URL
+https://apiv2.allsportsapi.com/football/?&met=Standings&leagueId=207&APIkey=!_your_account_APIkey_!
+
+JSON Response
+{
+  "success": 1,
+    "result": {
+        "total": [
+            {
+                "standing_place": "1",
+                "standing_place_type": "Promotion - Champions League (Group Stage)",
+                "standing_team": "Inter",
+                "standing_P": "37",
+                "standing_W": "27",
+                "standing_D": "7",
+                "standing_L": "3",
+                "standing_F": "84",
+                "standing_A": "34",
+                "standing_GD": "50",
+                "standing_PTS": "88",
+                "team_key": "79",
+                "league_key": "207",
+                "league_season": "2020/2021",
+                "league_round": "",
+            },
+            ...............
+        ],
+        "home": [
+            {
+                "standing_place": "1",
+                "standing_place_type": null,
+                "standing_team": "Inter",
+                "standing_P": "18",
+                "standing_W": "16",
+                "standing_D": "1",
+                "standing_L": "1",
+                "standing_F": "48",
+                "standing_A": "17",
+                "standing_GD": "31",
+                "standing_PTS": "49",
+                "team_key": "79",
+                "league_key": "207",
+                "league_season": "2020/2021",
+                "league_round": "",
+                "standing_updated": "2021-05-18 22:40:28",
+                "fk_stage_key": "331",
+                "stage_name": "Current"
+            },
+            ...........................
+        ],
+        "away": [
+            {
+                "standing_place": "1",
+                "standing_place_type": null,
+                "standing_team": "AC Milan",
+                "standing_P": "18",
+                "standing_W": "15",
+                "standing_D": "1",
+                "standing_L": "2",
+                "standing_F": "41",
+                "standing_A": "17",
+                "standing_GD": "24",
+                "standing_PTS": "46",
+                "team_key": "159",
+                "league_key": "207",
+                "league_season": "2020/2021",
+                "league_round": "",
+                "standing_updated": "2021-05-18 22:40:29",
+                "fk_stage_key": "331",
+                "stage_name": "Current"
+            },
+            .........................
+        ]
+      }
+}
+            
+
+PHP call example
+
+$APIkey=!_your_account_APIkey_!;
+$leagueId = 207;
+
+$curl_options = array(
+  CURLOPT_URL => "https://apiv2.allsportsapi.com/football/?met=Standings&APIkey=$APIkey&leagueId=$leagueId",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => false,
+  CURLOPT_TIMEOUT => 30,
+  CURLOPT_CONNECTTIMEOUT => 5
+);
+
+$curl = curl_init();
+curl_setopt_array( $curl, $curl_options );
+$result = curl_exec( $curl );
+
+$result = (array) json_decode($result);
+
+var_dump($result);
+
+            
+
+
+Topscorers
+
+Method
+GET/POST apiv2.allsportsapi.com/football?met=Topscorers
+
+Returns topsorers for leagues included in your current subscription plan
+
+
+Parameters
+Parameter	Description
+met	API method name
+APIkey	Authorization code generated from your allsportsapi account
+leagueId	League internal code
+
+Request URL
+https://apiv2.allsportsapi.com/football/?&met=Topscorers&leagueId=207&APIkey=!_your_account_APIkey_!
+
+JSON Response
+{
+  "success": 1,
+    "result": [
+        {
+            "player_place": "1",
+            "player_name": "Cristiano Ronaldo",
+            "player_key": 103051168,
+            "team_name": "Juventus",
+            "team_key": "96",
+            "goals": "29",
+            "assists": null,
+            "penalty_goals": "6"
+        },
+        {
+            "player_place": "2",
+            "player_name": "R. Lukaku",
+            "player_key": 592781429,
+            "team_name": "Internazionale",
+            "team_key": "79",
+            "goals": "23",
+            "assists": "11",
+            "penalty_goals": "6"
+        },
+        {
+            "player_place": "3",
+            "player_name": "L. Muriel",
+            "player_key": 740446579,
+            "team_name": "Atalanta",
+            "team_key": "85",
+            "goals": "22",
+            "assists": "9",
+            "penalty_goals": "2"
+        },
+        .......
+  ]
+}
+            
+
+PHP call example
+
+$APIkey=!_your_account_APIkey_!;
+$leagueId = 207;
+
+$curl_options = array(
+  CURLOPT_URL => "https://apiv2.allsportsapi.com/football/?met=Topsorers&APIkey=$APIkey&leagueId=$leagueId",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => false,
+  CURLOPT_TIMEOUT => 30,
+  CURLOPT_CONNECTTIMEOUT => 5
+);
+
+$curl = curl_init();
+curl_setopt_array( $curl, $curl_options );
+$result = curl_exec( $curl );
+
+$result = (array) json_decode($result);
+
+var_dump($result);
+
+            
+
+
+Teams
+
+Method
+GET/POST apiv2.allsportsapi.com/football?met=Teams
+
+Returns teams for leagues included in your current subscription plan
+
+
+Parameters
+Parameter	Description
+met	API method name
+APIkey	Authorization code generated from your allsportsapi account
+leagueId	League internal code
+teamId	The id of the team to be searched
+teamName	The name of the team you want to search for
+
+Request URL
+https://apiv2.allsportsapi.com/football/?&met=Teams&teamId=96&APIkey=!_your_account_APIkey_!
+
+JSON Response
+{
+  "success": 1,
+  "result": [
+    {
+        "team_key": "96",
+        "team_name": "Juventus",
+        "team_logo": "https://apiv2.allsportsapi.com/logo/96_juventus.jpg",
+        "players": [
+        {
+               "player_key": 3063582184,
+               "player_name": "F. Israel",
+               "player_number": "45",
+               "player_country": null,
+               "player_type": "Goalkeepers",
+               "player_age": "21",
+               "player_match_played": "0",
+               "player_goals": "0",
+               "player_yellow_cards": "0",
+               "player_red_cards": "0",
+               "player_image": "https://apiv2.allsportsapi.com/logo/players/79274_f-israel.jpg"
+           },
+           {
+               "player_key": 41841276,
+               "player_name": "M. Perin",
+               "player_number": "",
+               "player_country": null,
+               "player_type": "Goalkeepers",
+               "player_age": "",
+               "player_match_played": "",
+               "player_goals": "",
+               "player_yellow_cards": "",
+               "player_red_cards": "",
+               "player_image": "https://apiv2.allsportsapi.com/logo/players/472_m-perin.jpg"
+           },
+            .......
+        ]
+    }
+  ]
+}
+            
+
+PHP call example
+
+$APIkey=!_your_account_APIkey_!;
+$teamId = 96;
+
+$curl_options = array(
+  CURLOPT_URL => "https://apiv2.allsportsapi.com/football/?met=Teams&APIkey=$APIkey&teamId=$teamId",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => false,
+  CURLOPT_TIMEOUT => 30,
+  CURLOPT_CONNECTTIMEOUT => 5
+);
+
+$curl = curl_init();
+curl_setopt_array( $curl, $curl_options );
+$result = curl_exec( $curl );
+
+$result = (array) json_decode($result);
+
+var_dump($result);
+
+            
+
+
+Players
+
+Method
+GET/POST apiv2.allsportsapi.com/football?met=Players
+
+Returns players for leagues included in your current subscription plan
+
+
+Parameters
+Parameter	Description
+met	API method name
+APIkey	Authorization code generated from your allsportsapi account
+playerId	Player internal code
+playerName	Player name
+leagueId	League internal code
+teamId	The id of the team to be searched
+
+Request URL
+https://apiv2.allsportsapi.com/football/?&met=Players&playerId=103051168&APIkey=!_your_account_APIkey_!
+
+JSON Response
+{
+  "success": 1,
+  "result": [
+  {
+        "player_key": 103051168,
+        "player_name": "Cristiano Ronaldo",
+        "player_number": "7",
+        "player_country": null,
+        "player_type": "Forwards",
+        "player_age": "36",
+        "player_match_played": "3",
+        "player_goals": "5",
+        "player_yellow_cards": "0",
+        "player_red_cards": "0",
+        "player_minutes": "270",
+        "player_injured": "No",
+        "player_substitute_out": "0",
+        "player_substitutes_on_bench": "0",
+        "player_assists": "1",
+        "player_is_captain": "",
+        "player_shots_total": "",
+        "player_goals_conceded": "",
+        "player_fouls_commited": "",
+        "player_tackles": "",
+        "player_blocks": "",
+        "player_crosses_total": "",
+        "player_interceptions": "",
+        "player_clearances": "",
+        "player_dispossesed": "",
+        "player_saves": "",
+        "player_inside_box_saves": "",
+        "player_duels_total": "",
+        "player_duels_won": "",
+        "player_dribble_attempts": "",
+        "player_dribble_succ": "",
+        "player_pen_comm": "",
+        "player_pen_won": "",
+        "player_pen_scored": "",
+        "player_pen_missed": "",
+        "player_passes": "",
+        "player_passes_accuracy": "",
+        "player_key_passes": "",
+        "player_woordworks": "",
+        "player_rating": "",
+        "team_name": "Portugal",
+        "team_key": "23",
+        "player_image": "https://apiv2.allsportsapi.com/logo/players/52515_cristiano-ronaldo.jpg"
+    },
+      ...........
+  ]
+}
+            
+
+PHP call example
+
+$APIkey=!_your_account_APIkey_!;
+$playerId = 103051168;
+
+$curl_options = array(
+  CURLOPT_URL => "https://apiv2.allsportsapi.com/football/?met=Players&APIkey=$APIkey&playerId=$playerId",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => false,
+  CURLOPT_TIMEOUT => 30,
+  CURLOPT_CONNECTTIMEOUT => 5
+);
+
+$curl = curl_init();
+curl_setopt_array( $curl, $curl_options );
+$result = curl_exec( $curl );
+
+$result = (array) json_decode($result);
+
+var_dump($result);
+
+            
+
+
+Videos
+
+Method
+GET/POST apiv2.allsportsapi.com/football?met=Videos
+
+Returns videos for events included in your current subscription plan
+
+
+Parameters
+Parameter	Description
+met	API method name
+APIkey	Authorization code generated from your allsportsapi account
+eventId	Event internal Id
+
+Request URL
+https://apiv2.allsportsapi.com/football/?&met=Videos&eventId=86392&APIkey=!_your_account_APIkey_!
+
+JSON Response
+{
+  "success": 1,
+  "result": [
+    {
+         "event_key": "86392",
+         "video_title_full": "Highlights",
+         "video_title": "Highlights",
+         "video_url": "https://cc.sporttube.com/embed/Za4CCCG"
+     },
+     {
+         "event_key": "86392",
+         "video_title_full": "Highlights",
+         "video_title": "Highlights",
+         "video_url": "https://cc.sporttube.com/embed/g74CCCG"
+     },
+     {
+         "event_key": "86392",
+         "video_title_full": "Highlights",
+         "video_title": "Highlights",
+         "video_url": "https://cc.sporttube.com/embed/v74CCCG"
+     },
+     {
+         "event_key": "86392",
+         "video_title_full": "Highlights",
+         "video_title": "Highlights",
+         "video_url": "https://cc.sporttube.com/embed/BJ4CCCG"
+     },
+     {
+         "event_key": "86392",
+         "video_title_full": "Highlights",
+         "video_title": "Highlights",
+         "video_url": "https://cc.sporttube.com/embed/KJ4CCCG"
+     },
+     {
+         "event_key": "86392",
+         "video_title_full": "Highlights",
+         "video_title": "Highlights",
+         "video_url": "https://cc.sporttube.com/embed/uJ4CCCG"
+     }
+  ]
+}
+            
+
+PHP call example
+
+$APIkey=!_your_account_APIkey_!;
+$eventId = 86392;
+
+$curl_options = array(
+  CURLOPT_URL => "https://apiv2.allsportsapi.com/football/?met=Videos&APIkey=$APIkey&eventId=$eventId",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => false,
+  CURLOPT_TIMEOUT => 30,
+  CURLOPT_CONNECTTIMEOUT => 5
+);
+
+$curl = curl_init();
+curl_setopt_array( $curl, $curl_options );
+$result = curl_exec( $curl );
+
+$result = (array) json_decode($result);
+
+var_dump($result);
+
+            
+Odds
+
+Method
+GET/POST apiv2.allsportsapi.com/football?met=Odds
+
+Returns odds for events included in your current subscription plan
+
+
+Parameters
+Parameter	Description
+met	API method name
+APIkey	Authorization code generated from your allsportsapi account
+from	Start date (yyyy-mm-dd)
+to	Stop date (yyyy-mm-dd)
+countryId	Country ID - if set only events from specific country will be returned (Optional)
+leagueId	League ID - if set events from specific league will be returned (Optional)
+matchId	Match ID - if set only details from specific match will be returned (Optional)
+
+Request URL
+https://apiv2.allsportsapi.com/football/?&met=Odds&matchId=86392&APIkey=!_your_account_APIkey_!
+
+JSON Response
+{
+  "success": 1,
+  "result": {
+        "86392": [
+            {
+                "match_id": "86392",
+                "odd_bookmakers": "bwin",
+                "odd_1": "1.83",
+                "odd_x": "3.40",
+                "odd_2": "4.75",
+                "odd_1x": "1.18",
+                "odd_12": "1.25",
+                "odd_x2": "1.95",
+                "ah-4.5_1": null,
+                "ah-4.5_2": null,
+                "ah-4_1": null,
+                "ah-4_2": null,
+                "ah-3.5_1": null,
+                "ah-3.5_2": null,
+                "ah-3_1": null,
+                "ah-3_2": null,
+                "ah-2.5_1": null,
+                "ah-2.5_2": null,
+                "ah-2_1": null,
+                "ah-2_2": null,
+                "ah-1.5_1": null,
+                "ah-1.5_2": null,
+                "ah-1_1": null,
+                "ah-1_2": null,
+                "ah0_1": null,
+                "ah0_2": null,
+                "ah+0.5_1": null,
+                "ah+1_1": null,
+                "ah+1_2": null,
+                "ah+1.5_1": null,
+                "ah+1.5_2": null,
+                "ah+2_1": null,
+                "ah+2_2": null,
+                "ah+2.5_1": null,
+                "ah+2.5_2": null,
+                "ah+3_1": null,
+                "ah+3_2": null,
+                "ah+3.5_1": null,
+                "ah+3.5_2": null,
+                "ah+4_1": null,
+                "ah+4_2": null,
+                "ah+4.5_1": null,
+                "ah+4.5_2": null,
+                "o+0.5": "1.08",
+                "u+0.5": "6.50",
+                "o+1": null,
+                "u+1": null,
+                "o+1.5": "1.44",
+                "u+1.5": "2.60",
+                "o+2": null,
+                "u+2": null,
+                "o+2.5": "2.30",
+                "u+2.5": "1.57",
+                "o+3": null,
+                "u+3": null,
+                "o+3.5": "4.20",
+                "u+3.5": "1.19",
+                "o+4": null,
+                "u+4": null,
+                "o+4.5": "7.75",
+                "u+4.5": "1.05",
+                "o+5": null,
+                "u+5": null,
+                "o+5.5": "15.00",
+                "u+5.5": "1.01",
+                "bts_yes": "2.15",
+                "bts_no": "1.62"
+            },
+            .........
+      }
+    ]
+  }
+}
+              
+
+PHP call example
+
+  $APIkey=!_your_account_APIkey_!;
+  $eventId = 86392;
+
+  $curl_options = array(
+    CURLOPT_URL => "https://apiv2.allsportsapi.com/football/?met=Odds&APIkey=$APIkey&matchId=$eventId",
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HEADER => false,
+    CURLOPT_TIMEOUT => 30,
+    CURLOPT_CONNECTTIMEOUT => 5
+  );
+
+  $curl = curl_init();
+  curl_setopt_array( $curl, $curl_options );
+  $result = curl_exec( $curl );
+
+  $result = (array) json_decode($result);
+
+  var_dump($result);
+
+              
+Probabilities
+
+Method
+GET/POST apiv2.allsportsapi.com/football?met=Probabilities
+
+Returns probabilities for events included in your current subscription plan
+
+
+Parameters
+Parameter	Description
+met	API method name
+APIkey	Authorization code generated from your allsportsapi account
+from	Start date (yyyy-mm-dd)
+to	Stop date (yyyy-mm-dd)
+countryId	Country ID - if set only events from specific country will be returned (Optional)
+leagueId	League ID - if set events from specific league will be returned (Optional)
+matchId	Match ID - if set only details from specific match will be returned (Optional)
+
+Request URL
+https://apiv2.allsportsapi.com/football/?met=Probabilities&matchId=86392&APIkey=!_your_account_APIkey_!
+
+JSON Response
+{
+    "success": 1,
+    "result": [
+        {
+            "event_key": "86392",
+            "country_key": "6",
+            "country_name": "Spain",
+            "league_key": "302",
+            "league_name": "La Liga",
+            "event_date": "2021-05-16",
+            "event_time": "18:30",
+            "event_status": "Finished",
+            "home_team_key": "7275",
+            "event_home_team": "Deportivo Alavés",
+            "event_away_team": "Granada",
+            "away_team_key": "151",
+            "event_halftime_result": "2 - 1",
+            "event_final_result": "4 - 2",
+            "event_ft_result": "",
+            "event_penalty_result": "",
+            "event_home_formation": "4-4-2",
+            "event_away_formation": "4-2-3-1",
+            "event_live": "0",
+            "event_HW": "39.00",
+            "event_D": "25.00",
+            "event_AW": "36.00",
+            "event_HW_D": "64.00",
+            "event_AW_D": "61.00",
+            "event_HW_AW": "75.00",
+            "event_O": "56.00",
+            "event_U": "44.00",
+            "event_O_1": "79.00",
+            "event_U_1": "21.00",
+            "event_O_3": "34.00",
+            "event_U_3": "66.00",
+            "event_bts": "59.00",
+            "event_ots": "41.00",
+            "event_ah_h_45": "100.00",
+            "event_ah_a_45": "0.00",
+            "event_ah_h_35": "98.00",
+            "event_ah_a_35": "2.00",
+            "event_ah_h_25": "94.00",
+            "event_ah_a_25": "6.00",
+            "event_ah_h_15": "83.00",
+            "event_ah_a_15": "17.00",
+            "event_ah_h_05": "64.00",
+            "event_ah_a_05": "36.00",
+            "event_ah_h_-05": "39.00",
+            "event_ah_a_-05": "61.00",
+            "event_ah_h_-15": "19.00",
+            "event_ah_a_-15": "81.00",
+            "event_ah_h_-25": "7.00",
+            "event_ah_a_-25": "93.00",
+            "event_ah_h_-35": "2.00",
+            "event_ah_a_-35": "98.00",
+            "event_ah_h_-45": "1.00",
+            "event_ah_a_-45": "99.00"
+        }
+    ]
+}
+              
+
+PHP call example
+
+  $APIkey=!_your_account_APIkey_!;
+  $eventId = 86392;
+
+  $curl_options = array(
+    CURLOPT_URL => "https://apiv2.allsportsapi.com/football/?met=Probabilities&APIkey=$APIkey&matchId=$eventId",
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HEADER => false,
+    CURLOPT_TIMEOUT => 30,
+    CURLOPT_CONNECTTIMEOUT => 5
+  );
+
+  $curl = curl_init();
+  curl_setopt_array( $curl, $curl_options );
+  $result = curl_exec( $curl );
+
+  $result = (array) json_decode($result);
+
+  var_dump($result);
+
+              
+Live Odds
+
+Method
+GET/POST apiv2.allsportsapi.com/football?met=OddsLive
+
+Returns live odds for live events included in your current subscription plan
+
+
+Parameters
+Parameter	Description
+met	API method name
+APIkey	Authorization code generated from your allsportsapi account
+countryId	Country ID - if set only events from specific country will be returned (Optional)
+leagueId	League ID - if set events from specific league will be returned (Optional)
+matchId	Match ID - if set only details from specific match will be returned (Optional)
+timezone	The timezone where you want to receive the data in tz format (exemple: America/New_York). Default timezone: Europe/Berlin (Optional)
+
+Request URL
+https://apiv2.allsportsapi.com/football/?met=OddsLive&APIkey=!_your_account_APIkey_!
+
+JSON Response
+{
+   "success": 1,
+   "result": {
+       "60623": [
+           {
+               "odd_name": "1x2 - 20 minutes",
+               "is_odd_suspended": "Yes",
+               "odd_type": "Home",
+               "odd_value": "501",
+               "odd_participant_handicap": null,
+               "odd_last_updated": "2021-08-25 11:19:37",
+               "match_id": "60623"
+           },
+           {
+               "odd_name": "1x2 - 20 minutes",
+               "is_odd_suspended": "Yes",
+               "odd_type": "Draw",
+               "odd_value": "15",
+               "odd_participant_handicap": null,
+               "odd_last_updated": "2021-08-25 11:19:37",
+               "match_id": "60623"
+           },
+           {
+               "odd_name": "1x2 - 20 minutes",
+               "is_odd_suspended": "Yes",
+               "odd_type": "Away",
+               "odd_value": "1.02",
+               "odd_participant_handicap": null,
+               "odd_last_updated": "2021-08-25 11:19:57",
+               "match_id": "60623"
+           },
+           ........
+        ],
+        ..........
+    }
+}
+                       
+
+PHP call example
+
+ $APIkey=!_your_account_APIkey_!;
+
+ $curl_options = array(
+   CURLOPT_URL => "https://apiv2.allsportsapi.com/football/?met=OddsLive&APIkey=$APIkey",
+   CURLOPT_RETURNTRANSFER => true,
+   CURLOPT_HEADER => false,
+   CURLOPT_TIMEOUT => 30,
+   CURLOPT_CONNECTTIMEOUT => 5
+ );
+
+ $curl = curl_init();
+ curl_setopt_array( $curl, $curl_options );
+ $result = curl_exec( $curl );
+
+ $result = (array) json_decode($result);
+
+ var_dump($result);
+
+       
+Live Comments
+
+Method
+GET/POST apiv2.allsportsapi.com/football?met=Comments
+
+Returns live odds for live events included in your current subscription plan
+
+
+Parameters
+Parameter	Description
+met	API method name
+APIkey	Authorization code generated from your allsportsapi account
+from	Start date (yyyy-mm-dd)
+to	Stop date (yyyy-mm-dd)
+live	live - if set, the method will return comments only for live events.
+countryId	Country ID - if set only events from specific country will be returned (Optional)
+leagueId	League ID - if set events from specific league will be returned (Optional)
+matchId	Match ID - if set only details from specific match will be returned (Optional)
+timezone	The timezone where you want to receive the data in tz format (exemple: America/New_York). Default timezone: Europe/Berlin (Optional)
+
+Request URL
+https://apiv2.allsportsapi.com/football/?met=Comments&APIkey=!_your_account_APIkey_!&matchId=902316
+
+JSON Response
+{
+   "success": 1,
+   "result": {
+       "902316": [
+           {
+               "comments_time": "00:38",
+               "comments_text": "England attack",
+               "comments_state_info": "Kalvin Phillips",
+               "match_id": "902316"
+           },
+           {
+               "comments_time": "01:03",
+               "comments_text": "England in possession",
+               "comments_state_info": "Luke Shaw",
+               "match_id": "902316"
+           },
+           {
+               "comments_time": "01:23",
+               "comments_text": "Italy corner",
+               "comments_state_info": null,
+               "match_id": "902316"
+           },
+           {
+               "comments_time": "01:59",
+               "comments_text": "England goal",
+               "comments_state_info": null,
+               "match_id": "902316"
+           },
+           ..........
+       ],
+       ..........
+     }
+ }
+                
+
+PHP call example
+
+$APIkey=!_your_account_APIkey_!;
+$matchId = 902316;
+
+$curl_options = array(
+  CURLOPT_URL => "https://apiv2.allsportsapi.com/football/?met=Comments&APIkey=$APIkey&matchId=$matchId",
+  CURLOPT_RETURNTRANSFER => true,
+  CURLOPT_HEADER => false,
+  CURLOPT_TIMEOUT => 30,
+  CURLOPT_CONNECTTIMEOUT => 5
+);
+
+$curl = curl_init();
+curl_setopt_array( $curl, $curl_options );
+$result = curl_exec( $curl );
+
+$result = (array) json_decode($result);
+
+var_dump($result);
+
+Full List Odds
+
+Method
+GET/POST apiv2.allsportsapi.com/football?met=FullOdds
+
+Returns full list odds for events included in your current subscription plan
+
+
+Parameters
+Parameter	Description
+met	API method name
+APIkey	Authorization code generated from your allsportsapi account
+from	Start date (yyyy-mm-dd)
+to	Stop date (yyyy-mm-dd)
+countryId	Country ID - if set only events from specific country will be returned (Optional)
+leagueId	League ID - if set events from specific league will be returned (Optional)
+matchId	Match ID - if set only details from specific match will be returned (Optional)
+
+Request URL
+https://apiv2.allsportsapi.com/football/?&met=FullOdds&matchId=1486610&APIkey=!_your_account_APIkey_!
+
+JSON Response
+{
+    "success": 1,
+    "result": {
+        "1486610": {
+            "Match Winner": {
+                "Home": {
+                    "bet365": "2.35",
+                    "Marathon": "2.30",
+                    "Fonbet": "2.35",
+                    "1xBet": "2.38",
+                    "Betano": "2.42",
+                    "Betway": "2.38",
+                    "Betcris": "2.33"
+                },
+                .............
+            },
+            "Correct Score": {
+                "1:0": {
+                    "bet365": "8.00",
+                    "Marathon": "6.35",
+                    "1xBet": "8.00",
+                    "Betano": "7.40",
+                    "Betway": "7.00"
+                },
+                "2:0": {
+                    "bet365": "11.00",
+                    "Marathon": "10.25",
+                    "1xBet": "12.00",
+                    "Betano": "11.75",
+                    "Betway": "10.00"
+                },
+                "2:1": {
+                    "bet365": "11.00",
+                    "Marathon": "8.50",
+                    "1xBet": "10.00",
+                    "Betano": "9.25",
+                    "Betway": "9.00"
+                },
+                ...........
+            }
+        }
+    }
+}
+              
+
+PHP call example
+
+  $APIkey=!_your_account_APIkey_!;
+  $eventId = 1486610;
+
+  $curl_options = array(
+    CURLOPT_URL => "https://apiv2.allsportsapi.com/football/?met=FullOdds&APIkey=$APIkey&matchId=$eventId",
+    CURLOPT_RETURNTRANSFER => true,
+    CURLOPT_HEADER => false,
+    CURLOPT_TIMEOUT => 30,
+    CURLOPT_CONNECTTIMEOUT => 5
+  );
+
+  $curl = curl_init();
+  curl_setopt_array( $curl, $curl_options );
+  $result = curl_exec( $curl );
+
+  $result = (array) json_decode($result);
+
+  var_dump($result);
+
+              
