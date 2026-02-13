@@ -1,3 +1,4 @@
+api_client.py
 from __future__ import annotations
 from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
@@ -11,6 +12,7 @@ class SportsAPIClient:
     timeout_s: int = 20
 
     def _headers(self) -> Dict[str, str]:
+        # Adjust if your provider uses x-api-key, etc.
         return {
             "Authorization": f"Bearer {self.api_key}",
             "Accept": "application/json",
