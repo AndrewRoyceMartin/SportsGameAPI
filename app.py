@@ -49,9 +49,15 @@ def get_client() -> SportsAPIClient:
 
 
 @st.cache_data(ttl=600, show_spinner=False)
-def fetch_leagues():
+def fetch_countries():
     client = get_client()
-    return client.list_leagues()
+    return client.list_countries()
+
+
+@st.cache_data(ttl=600, show_spinner=False)
+def fetch_leagues(country_id: str = ""):
+    client = get_client()
+    return client.list_leagues(country_id=country_id if country_id else None)
 
 
 @st.cache_data(ttl=300, show_spinner=False)
@@ -98,14 +104,31 @@ def render_sidebar():
         st.header("Configuration")
 
         try:
-            leagues_raw = fetch_leagues()
+            countries_raw = fetch_countries()
+        except Exception as e:
+            st.error(f"Could not load countries: {e}")
+            countries_raw = []
+
+        country_options = {"All countries": ""}
+        for c in countries_raw:
+            name = c.get("country_name", "")
+            if name:
+                country_options[name] = str(c.get("country_key", ""))
+
+        selected_country = st.selectbox("Country", options=sorted(country_options.keys()))
+        country_id = country_options[selected_country]
+
+        try:
+            leagues_raw = fetch_leagues(country_id)
         except Exception as e:
             st.error(f"Could not load leagues: {e}")
             leagues_raw = []
 
         league_options = {}
         for lg in leagues_raw:
-            label = f"{lg.get('league_name', '')} ({lg.get('country_name', '')})"
+            label = lg.get("league_name", "")
+            if not country_id:
+                label = f"{label} ({lg.get('country_name', '')})"
             league_options[label] = lg.get("league_key", "")
 
         if league_options:
