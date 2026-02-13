@@ -6,6 +6,10 @@ import streamlit as st
 import pandas as pd
 from api_client import SportsAPIClient
 from features import build_elo_ratings, elo_win_prob
+from sportsbet_odds import fetch_sportsbet_odds
+from mapper import match_fixtures_to_odds
+from value_engine import compute_value_bets
+from store import save_picks, get_recent_picks, init_db
 
 
 def format_date(d: str) -> str:
@@ -200,6 +204,12 @@ def render_sidebar():
         num_predictions = st.slider("Predictions to show", 5, 50, 25, step=5)
 
         st.divider()
+        st.subheader("Value Bets")
+        min_edge = st.slider("Min Edge %", 1, 30, 5, step=1) / 100.0
+        odds_range = st.slider("Odds Range", 1.10, 10.0, (1.80, 3.50), step=0.05)
+        top_n = st.selectbox("Top N picks", options=[5, 10, 15, 20, 25], index=1)
+
+        st.divider()
         refresh = st.button("Refresh Data", use_container_width=True)
 
     return (
@@ -210,7 +220,9 @@ def render_sidebar():
         date_to_api(hist_end_d) if hist_end_d else "",
         date_to_api(upcoming_start_d) if upcoming_start_d else "",
         date_to_api(upcoming_end_d) if upcoming_end_d else "",
-        home_adv, k_factor, num_predictions, refresh,
+        home_adv, k_factor, num_predictions,
+        min_edge, odds_range, top_n,
+        refresh,
         hist_start_d is None or hist_end_d is None or upcoming_start_d is None or upcoming_end_d is None,
     )
 
@@ -566,6 +578,123 @@ def render_recent_results(completed):
     st.dataframe(df, use_container_width=True, hide_index=True)
 
 
+def render_value_bets(upcoming, elo, home_adv, min_edge, odds_range, top_n):
+    st.subheader("Value Bets")
+    st.caption("Matches where the Elo model finds an edge over Sportsbet odds")
+
+    has_token = bool(os.getenv("APIFY_TOKEN", ""))
+    if not has_token:
+        st.warning(
+            "Apify API token not found. Add APIFY_TOKEN to your Secrets "
+            "(Tools -> Secrets) to enable live odds fetching."
+        )
+        return
+
+    sportsbet_url = st.text_input(
+        "Sportsbet URL to scrape",
+        value="https://www.sportsbet.com.au/betting/soccer",
+    )
+
+    fetch_odds_btn = st.button("Fetch Odds & Find Value", use_container_width=True)
+
+    if fetch_odds_btn:
+        try:
+            with st.spinner("Fetching odds from Sportsbet (this may take a few minutes)..."):
+                odds_data = fetch_sportsbet_odds(
+                    start_urls=[sportsbet_url],
+                    timeout_secs=300,
+                )
+            st.success(f"Fetched {len(odds_data)} odds entries from Sportsbet")
+
+            if not odds_data:
+                st.warning("No odds data returned. Try a different Sportsbet URL.")
+                return
+
+            with st.spinner("Matching fixtures to odds..."):
+                matched = match_fixtures_to_odds(upcoming, odds_data)
+
+            st.info(f"Matched {len(matched)} fixture-odds pairs")
+
+            if not matched:
+                st.warning(
+                    "Could not match any upcoming fixtures to Sportsbet events. "
+                    "This can happen if team names differ significantly or no events overlap."
+                )
+                return
+
+            odds_min, odds_max = odds_range
+            value_picks = compute_value_bets(
+                matched, elo,
+                home_adv=home_adv,
+                min_edge=min_edge,
+                odds_min=odds_min,
+                odds_max=odds_max,
+                top_n=top_n,
+            )
+
+            if not value_picks:
+                st.info(
+                    f"No value bets found with edge >= {min_edge:.0%} "
+                    f"and odds between {odds_min:.2f} - {odds_max:.2f}. "
+                    "Try lowering the minimum edge or widening the odds range."
+                )
+                return
+
+            st.success(f"Found {len(value_picks)} value bet(s)")
+
+            display_rows = []
+            for vb in value_picks:
+                display_rows.append({
+                    "Match": f"{vb['home_team']} vs {vb['away_team']}",
+                    "League": vb.get("league", ""),
+                    "Market": vb.get("market", ""),
+                    "Selection": vb["selection"],
+                    "Odds": f"{vb['odds_decimal']:.2f}",
+                    "Implied %": f"{vb['implied_prob']:.1%}",
+                    "Model %": f"{vb['model_prob']:.1%}",
+                    "Edge": f"{vb['edge']:.1%}",
+                    "EV/unit": f"{vb['ev_per_unit']:.3f}",
+                    "Pick": vb["selection"],
+                })
+
+            st.dataframe(
+                pd.DataFrame(display_rows),
+                use_container_width=True,
+                hide_index=True,
+            )
+
+            save_col1, save_col2 = st.columns([1, 3])
+            with save_col1:
+                if st.button("Save Picks"):
+                    count = save_picks(value_picks)
+                    st.success(f"Saved {count} pick(s) to database")
+
+        except Exception as e:
+            st.error(f"Error fetching odds: {e}")
+
+    st.divider()
+    st.caption("Saved Picks History")
+    try:
+        history = get_recent_picks(limit=25)
+        if history:
+            hist_rows = []
+            for h in history:
+                hist_rows.append({
+                    "Saved": h.get("created_at", ""),
+                    "Match": f"{h['home_team']} vs {h['away_team']}",
+                    "Selection": h.get("selection", ""),
+                    "Odds": f"{h.get('odds_decimal', 0):.2f}" if h.get("odds_decimal") else "",
+                    "Edge": f"{h.get('edge', 0):.1%}" if h.get("edge") else "",
+                    "Result": h.get("result", "Pending"),
+                    "P/L": f"{h.get('profit_loss', 0):.2f}" if h.get("profit_loss") is not None else "",
+                })
+            st.dataframe(pd.DataFrame(hist_rows), use_container_width=True, hide_index=True)
+        else:
+            st.info("No saved picks yet. Find value bets and save them above.")
+    except Exception:
+        st.info("No saved picks yet.")
+
+
 def main():
     st.set_page_config(page_title="Sports Predictor", page_icon="⚽", layout="wide")
 
@@ -577,7 +706,9 @@ def main():
         country_id, country_league_ids,
         hist_start, hist_end,
         upcoming_start, upcoming_end,
-        home_adv, k_factor, num_predictions, refresh,
+        home_adv, k_factor, num_predictions,
+        min_edge, odds_range, top_n,
+        refresh,
         has_date_error,
     ) = render_sidebar()
 
@@ -626,12 +757,15 @@ def main():
     render_metrics(completed, upcoming, elo)
     st.divider()
 
-    tab_best, tab_predict, tab_team, tab_rankings, tab_results = st.tabs(
-        ["Best Bets", "All Predictions", "Team Search", "Rankings", "Recent Results"]
+    tab_best, tab_value, tab_predict, tab_team, tab_rankings, tab_results = st.tabs(
+        ["Best Bets", "Value Bets", "All Predictions", "Team Search", "Rankings", "Recent Results"]
     )
 
     with tab_best:
         render_best_bets(upcoming, elo, home_adv)
+
+    with tab_value:
+        render_value_bets(upcoming, elo, home_adv, min_edge, odds_range, top_n)
 
     with tab_predict:
         render_predictions(upcoming, elo, home_adv, num_predictions)
