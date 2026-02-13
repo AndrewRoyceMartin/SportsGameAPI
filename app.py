@@ -99,6 +99,22 @@ def fetch_all_upcoming(from_date: str, to_date: str):
     return all_fixtures
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_country_completed(league_ids: tuple, from_date: str, to_date: str):
+    all_games = []
+    for lid in league_ids:
+        all_games.extend(fetch_completed(str(lid), from_date, to_date))
+    return all_games
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_country_upcoming(league_ids: tuple, from_date: str, to_date: str):
+    all_fixtures = []
+    for lid in league_ids:
+        all_fixtures.extend(fetch_upcoming(str(lid), from_date, to_date))
+    return all_fixtures
+
+
 def render_sidebar():
     with st.sidebar:
         st.header("Configuration")
@@ -131,6 +147,8 @@ def render_sidebar():
                 label = f"{label} ({lg.get('country_name', '')})"
             league_options[label] = lg.get("league_key", "")
 
+        country_league_ids = [str(lg.get("league_key", "")) for lg in leagues_raw]
+
         if league_options:
             all_league_options = {"All leagues": ""}
             all_league_options.update({k: v for k, v in sorted(league_options.items())})
@@ -138,6 +156,7 @@ def render_sidebar():
             league_id = all_league_options[selected_label]
         else:
             league_id = st.text_input("League ID", value="152")
+            country_league_ids = []
 
         st.divider()
         st.subheader("Date Ranges")
@@ -185,6 +204,8 @@ def render_sidebar():
 
     return (
         str(league_id),
+        country_id,
+        country_league_ids,
         date_to_api(hist_start_d) if hist_start_d else "",
         date_to_api(hist_end_d) if hist_end_d else "",
         date_to_api(upcoming_start_d) if upcoming_start_d else "",
@@ -546,6 +567,7 @@ def main():
 
     (
         league_id,
+        country_id, country_league_ids,
         hist_start, hist_end,
         upcoming_start, upcoming_end,
         home_adv, k_factor, num_predictions, refresh,
@@ -562,6 +584,8 @@ def main():
         with st.spinner("Fetching completed games..."):
             if league_id:
                 completed = fetch_completed(league_id, hist_start, hist_end)
+            elif country_id and country_league_ids:
+                completed = fetch_country_completed(tuple(country_league_ids), hist_start, hist_end)
             else:
                 completed = fetch_all_completed(hist_start, hist_end)
     except Exception as e:
@@ -573,6 +597,8 @@ def main():
         with st.spinner("Fetching upcoming games..."):
             if league_id:
                 upcoming = fetch_upcoming(league_id, upcoming_start, upcoming_end)
+            elif country_id and country_league_ids:
+                upcoming = fetch_country_upcoming(tuple(country_league_ids), upcoming_start, upcoming_end)
             else:
                 upcoming = fetch_all_upcoming(upcoming_start, upcoming_end)
     except Exception as e:
