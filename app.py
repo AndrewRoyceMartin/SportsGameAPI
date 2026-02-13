@@ -132,8 +132,10 @@ def render_sidebar():
             league_options[label] = lg.get("league_key", "")
 
         if league_options:
-            selected_label = st.selectbox("League", options=sorted(league_options.keys()))
-            league_id = league_options[selected_label]
+            all_league_options = {"All leagues": ""}
+            all_league_options.update({k: v for k, v in sorted(league_options.items())})
+            selected_label = st.selectbox("League", options=list(all_league_options.keys()))
+            league_id = all_league_options[selected_label]
         else:
             league_id = st.text_input("League ID", value="152")
 
@@ -558,7 +560,10 @@ def main():
 
     try:
         with st.spinner("Fetching completed games..."):
-            completed = fetch_completed(league_id, hist_start, hist_end)
+            if league_id:
+                completed = fetch_completed(league_id, hist_start, hist_end)
+            else:
+                completed = fetch_all_completed(hist_start, hist_end)
     except Exception as e:
         st.error(f"Failed to fetch completed games: {e}")
         st.info("Check that your API URL and key are configured correctly in Secrets.")
@@ -566,7 +571,10 @@ def main():
 
     try:
         with st.spinner("Fetching upcoming games..."):
-            upcoming = fetch_upcoming(league_id, upcoming_start, upcoming_end)
+            if league_id:
+                upcoming = fetch_upcoming(league_id, upcoming_start, upcoming_end)
+            else:
+                upcoming = fetch_all_upcoming(upcoming_start, upcoming_end)
     except Exception as e:
         st.warning(f"Could not fetch upcoming games: {e}")
         upcoming = []
