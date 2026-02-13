@@ -66,6 +66,18 @@ def fetch_upcoming(league_id: str, from_date: str, to_date: str):
     return client.list_upcoming_games(league_id, from_date, to_date)
 
 
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_all_completed(from_date: str, to_date: str):
+    client = get_client()
+    return client.list_completed_games("", from_date, to_date)
+
+
+@st.cache_data(ttl=300, show_spinner=False)
+def fetch_all_upcoming(from_date: str, to_date: str):
+    client = get_client()
+    return client.list_upcoming_games("", from_date, to_date)
+
+
 def render_sidebar():
     with st.sidebar:
         st.header("Configuration")
@@ -329,31 +341,55 @@ def render_best_bets(upcoming, elo, home_adv):
     )
 
 
-def render_team_search(completed, upcoming, elo, home_adv):
+def render_team_search(completed, upcoming, elo, home_adv, hist_start, hist_end, upcoming_start, upcoming_end):
     st.subheader("Team Search")
 
-    if not elo:
+    search_all = st.toggle("Search all leagues", value=False)
+
+    if search_all:
+        try:
+            with st.spinner("Fetching data across all leagues..."):
+                all_completed = fetch_all_completed(hist_start, hist_end)
+                all_upcoming = fetch_all_upcoming(upcoming_start, upcoming_end)
+            all_elo = build_elo_ratings(all_completed, home_adv=home_adv)
+        except Exception as e:
+            st.error(f"Could not fetch all-league data: {e}")
+            all_completed, all_upcoming, all_elo = completed, upcoming, elo
+    else:
+        all_completed, all_upcoming, all_elo = completed, upcoming, elo
+
+    if not all_elo:
         st.info("No team data available yet.")
         return
 
-    team_names = sorted(elo.keys())
-    selected_team = st.selectbox("Search for a team", options=[""] + team_names, index=0)
+    team_names = sorted(all_elo.keys())
 
-    if not selected_team:
-        st.caption("Select a team above to view their profile.")
+    search_text = st.text_input("Type a team name to filter")
+    if search_text:
+        filtered = [t for t in team_names if search_text.lower() in t.lower()]
+    else:
+        filtered = team_names
+
+    if not filtered:
+        st.warning("No teams match your search.")
         return
 
-    rating = elo.get(selected_team, 1500.0)
-    sorted_teams = sorted(elo.items(), key=lambda x: x[1], reverse=True)
+    selected_team = st.selectbox("Select a team", options=filtered)
+
+    if not selected_team:
+        return
+
+    rating = all_elo.get(selected_team, 1500.0)
+    sorted_teams = sorted(all_elo.items(), key=lambda x: x[1], reverse=True)
     rank = next((i for i, (t, _) in enumerate(sorted_teams, 1) if t == selected_team), len(sorted_teams))
 
     col1, col2, col3 = st.columns(3)
     col1.metric("Elo Rating", f"{rating:.1f}")
-    col2.metric("League Rank", f"{rank} / {len(sorted_teams)}")
+    col2.metric("Rank", f"{rank} / {len(sorted_teams)}")
     col3.metric("vs Average", f"{rating - 1500.0:+.1f}")
 
-    team_completed = [g for g in completed if g["home_team"] == selected_team or g["away_team"] == selected_team]
-    team_upcoming = [g for g in upcoming if g["home_team"] == selected_team or g["away_team"] == selected_team]
+    team_completed = [g for g in all_completed if g["home_team"] == selected_team or g["away_team"] == selected_team]
+    team_upcoming = [g for g in all_upcoming if g["home_team"] == selected_team or g["away_team"] == selected_team]
 
     if team_completed:
         wins = sum(1 for g in team_completed if (g["home_score"] > g["away_score"] and g["home_team"] == selected_team) or (g["away_score"] > g["home_score"] and g["away_team"] == selected_team))
@@ -373,8 +409,8 @@ def render_team_search(completed, upcoming, elo, home_adv):
         for fx in team_upcoming:
             h = fx["home_team"]
             a = fx["away_team"]
-            r_h = float(elo.get(h, 1500.0))
-            r_a = float(elo.get(a, 1500.0))
+            r_h = float(all_elo.get(h, 1500.0))
+            r_a = float(all_elo.get(a, 1500.0))
             p_home = elo_win_prob(r_h, r_a, home_adv=home_adv)
             p_away = 1.0 - p_home
             pick = h if p_home >= 0.5 else a
@@ -383,6 +419,7 @@ def render_team_search(completed, upcoming, elo, home_adv):
             rows.append({
                 "Date": format_date(fx.get("date_utc", "")),
                 "Time": fx.get("time", ""),
+                "League": fx.get("league_name", ""),
                 "Home": h,
                 "Away": a,
                 "P(Home)": f"{p_home:.1%}",
@@ -417,6 +454,7 @@ def render_team_search(completed, upcoming, elo, home_adv):
 
             rows.append({
                 "Date": format_date(g.get("date_utc", "")),
+                "League": g.get("league_name", ""),
                 "Opponent": opponent,
                 "Venue": venue,
                 "Score": f"{hs} - {as_}",
@@ -520,7 +558,7 @@ def main():
         render_predictions(upcoming, elo, home_adv, num_predictions)
 
     with tab_team:
-        render_team_search(completed, upcoming, elo, home_adv)
+        render_team_search(completed, upcoming, elo, home_adv, hist_start, hist_end, upcoming_start, upcoming_end)
 
     with tab_rankings:
         render_rankings(elo)
