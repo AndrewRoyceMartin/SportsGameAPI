@@ -39,13 +39,23 @@ def init_db() -> None:
             away_elo REAL,
             result TEXT,
             profit_loss REAL,
+            is_experimental INTEGER DEFAULT 0,
             meta TEXT
         );
 
         CREATE INDEX IF NOT EXISTS idx_picks_date ON picks(match_date);
         CREATE INDEX IF NOT EXISTS idx_picks_selection ON picks(selection);
     """)
+    _migrate(conn)
     conn.close()
+
+
+def _migrate(conn: sqlite3.Connection) -> None:
+    cursor = conn.execute("PRAGMA table_info(picks)")
+    columns = {row[1] for row in cursor.fetchall()}
+    if "is_experimental" not in columns:
+        conn.execute("ALTER TABLE picks ADD COLUMN is_experimental INTEGER DEFAULT 0")
+        conn.commit()
 
 
 def save_picks(picks: List[Dict[str, Any]]) -> int:
@@ -57,8 +67,8 @@ def save_picks(picks: List[Dict[str, Any]]) -> int:
             """INSERT INTO picks
                (match_date, match_time, home_team, away_team, league, country,
                 market, selection, odds_decimal, implied_prob, model_prob,
-                edge, ev_per_unit, home_elo, away_elo, meta)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                edge, ev_per_unit, home_elo, away_elo, is_experimental, meta)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
             (
                 p.get("date", ""),
                 p.get("time", ""),
@@ -75,13 +85,14 @@ def save_picks(picks: List[Dict[str, Any]]) -> int:
                 p.get("ev_per_unit"),
                 p.get("home_elo"),
                 p.get("away_elo"),
+                p.get("is_experimental", 0),
                 json.dumps({
                     k: v for k, v in p.items()
                     if k not in (
                         "date", "time", "home_team", "away_team", "league",
                         "country", "market", "selection", "odds_decimal",
                         "implied_prob", "model_prob", "edge", "ev_per_unit",
-                        "home_elo", "away_elo",
+                        "home_elo", "away_elo", "is_experimental",
                     )
                 }),
             ),

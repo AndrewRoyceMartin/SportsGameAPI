@@ -335,6 +335,8 @@ def _compute_values(matched, elo_ratings, min_edge, odds_range):
 def _display_value_bets(value_bets, league_label):
     st.success(f"Found {len(value_bets)} value bet(s) for {league_label}")
 
+    experimental = not is_two_outcome(league_label)
+
     rows = []
     for vb in value_bets:
         rows.append({
@@ -353,11 +355,22 @@ def _display_value_bets(value_bets, league_label):
 
     st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
 
+    if experimental:
+        st.info("Saving picks is disabled for 3-outcome leagues unless explicitly enabled.")
+        allow_save = st.checkbox(
+            "I understand this is a 3-outcome market and want to save these picks anyway"
+        )
+    else:
+        allow_save = True
+
     col1, col2 = st.columns([1, 3])
     with col1:
-        if st.button("Save All Picks", type="secondary"):
+        save_disabled = not allow_save
+        if st.button("Save All Picks", type="secondary", disabled=save_disabled):
             try:
                 init_db()
+                for vb in value_bets:
+                    vb["is_experimental"] = 1 if experimental else 0
                 count = save_picks(value_bets)
                 st.success(f"Saved {count} pick(s)")
             except Exception as e:
@@ -392,14 +405,17 @@ def render_saved_picks():
         if history:
             hist_rows = []
             for h in history:
+                exp_flag = "Experimental" if h.get("is_experimental") else ""
                 hist_rows.append({
                     "Saved": h.get("created_at", ""),
                     "Match": f"{h['home_team']} vs {h['away_team']}",
+                    "League": h.get("league", ""),
                     "Selection": h.get("selection", ""),
                     "Odds": f"{h.get('odds_decimal', 0):.2f}" if h.get("odds_decimal") else "",
                     "Edge": f"{h.get('edge', 0):.1%}" if h.get("edge") else "",
                     "Result": h.get("result", "Pending"),
                     "P/L": f"{h.get('profit_loss', 0):.2f}" if h.get("profit_loss") is not None else "",
+                    "Type": exp_flag,
                 })
             st.dataframe(pd.DataFrame(hist_rows), use_container_width=True, hide_index=True)
         else:
