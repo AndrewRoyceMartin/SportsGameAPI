@@ -1,0 +1,153 @@
+Below is a repeatable pattern you can follow for any new sport/league, plus concrete recommendations for what to add next.
+
+The “Add a Sport/League” checklist (works every time)
+1) Add it to the UI league list
+
+league_map.py
+
+Add a new entry under Production (or Experimental).
+
+2) Add per-league defaults
+
+league_defaults.py
+
+Set:
+
+history_days
+
+lookahead_days
+
+min_edge_pct
+
+odds_min/odds_max
+
+top_n
+
+3) Add SofaScore routing + tournament accept patterns
+
+stats_provider.py
+
+Add an entry in _LEAGUE_ROUTING:
+
+sport="football" | "basketball" | "ice-hockey" | "american-football" | "baseball" | "tennis" | ...
+
+accept=[...] patterns that match SofaScore tournament strings
+
+4) Ensure the odds actor returns the right market
+
+odds_fetch.py / Apify actor_input
+
+Confirm the scraper supports the sport and returns:
+
+event start time
+
+home/away names
+
+moneyline / winner prices
+
+5) Update extraction rules if the sport uses different market labels
+
+odds_extract.py
+
+Add synonyms for the main 2-outcome market:
+
+“Moneyline”, “Match Winner”, “Winner”, “To Win”, etc.
+
+If it’s a sport with draws (soccer), keep it Experimental unless you explicitly switch to 3-way modeling.
+
+6) Run a mapping sanity check
+
+mapper.py
+
+New leagues often need alias rules:
+
+abbreviations
+
+accents/diacritics
+
+“FC”, “SC”, “AFC”, “Utd”, “University”, etc.
+
+Best “next sports” to add (2-outcome friendly)
+✅ Easy wins (still 2-outcome)
+
+MLB (Baseball)
+
+Clean moneyline market
+
+Stable schedule volume
+
+Good candidate for production once you confirm scraper coverage
+
+Tennis (ATP/WTA)
+
+True 2-outcome (no draw)
+
+Team matching is player-name matching (different alias problems, but solvable)
+
+Great for a value engine because pricing is frequent
+
+AFL / NRL
+
+Typically 2-outcome (draw is rare but can exist)
+
+Book market naming varies (“Head to Head”)
+
+You’ll want strong team alias mapping (e.g., “Sydney Swans” vs “Swans”)
+
+⚠️ Keep Experimental for now
+
+Soccer leagues (EPL, La Liga, etc.) because most books default to 3-way (Home/Draw/Away).
+
+You can still run 2-outcome if you explicitly choose Draw No Bet or Double Chance, but that’s a different market and needs clear handling.
+
+MMA/UFC is already marked experimental — it’s 2-outcome but data + pricing quirks are real.
+
+Concrete implementation example: add MLB
+stats_provider.py routing
+
+Add:
+
+"MLB": _LeagueRoute(
+    sport="baseball",
+    accept=["mlb", "major league baseball"],
+),
+
+league_map.py
+
+Add “MLB” under production leagues.
+
+league_defaults.py (starter defaults)
+
+history_days: 120 (baseball benefits from more history)
+
+lookahead_days: 5–7
+
+min_edge_pct: 2.0–3.0 (start conservative)
+
+odds_min: 1.40
+
+odds_max: 3.50
+
+odds_extract.py
+
+Add market label synonyms (if not already):
+
+“Moneyline”
+
+“To Win”
+
+“Match Winner”
+
+“Winner”
+
+One design rule to keep your engine consistent
+
+Your Elo-based model assumes two outcomes. For any sport where draws are common:
+
+keep it Experimental
+
+and only promote to production once you either:
+
+implement 3-way probabilities, or
+
+explicitly use a 2-way market (Draw No Bet / Asian Handicap 0) and model accordingly.

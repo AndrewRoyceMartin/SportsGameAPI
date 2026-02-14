@@ -22,8 +22,8 @@ A Streamlit-based sports prediction application that finds value bets by compari
 - `.streamlit/config.toml` - Streamlit server configuration (port 5000)
 
 ## Supported Leagues
-Harvest actor supports: NFL, NBA, NHL, UCL, UFC, College-Football, College-Basketball
-SofaScore provides fixtures/results for all of these via sport-specific endpoints.
+Harvest actor supports: NFL, NBA, NHL, MLB, ATP, WTA, UCL, UFC, College-Football, College-Basketball
+SofaScore provides fixtures/results for all of these via sport-specific endpoints (basketball, ice-hockey, american-football, baseball, tennis, football, mma).
 
 ## Tech Stack
 - Python 3.11
@@ -64,7 +64,7 @@ SofaScore provides fixtures/results for all of these via sport-specific endpoint
 11. 3-outcome leagues: dedup best side per match, require explicit save opt-in, tag as experimental
 
 ## Production Safety
-- 2-outcome leagues (NBA, NFL, NHL, College FB/BB): full pipeline, normal save
+- 2-outcome leagues (NBA, NFL, NHL, MLB, ATP Tennis, WTA Tennis, College FB/BB): full pipeline, normal save
 - Experimental leagues (Champions League, UFC): save gated behind checkbox, tagged in DB
 - Duplicate pick protection via unique index on (match_date, home_team, away_team, selection, odds_decimal)
 

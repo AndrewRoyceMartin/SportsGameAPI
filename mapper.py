@@ -30,16 +30,34 @@ _ALIASES = {
     "dortmund": "borussia dortmund",
     "gladbach": "borussia monchengladbach",
     "leverkusen": "bayer leverkusen",
+    "chi white sox": "chicago white sox",
+    "chi cubs": "chicago cubs",
+    "la dodgers": "los angeles dodgers",
+    "la angels": "los angeles angels",
+    "ny yankees": "new york yankees",
+    "ny mets": "new york mets",
+    "sf giants": "san francisco giants",
+    "sd padres": "san diego padres",
+    "tb rays": "tampa bay rays",
+    "kc royals": "kansas city royals",
+    "stl cardinals": "st louis cardinals",
+    "d-backs": "arizona diamondbacks",
+    "diamondbacks": "arizona diamondbacks",
 }
 
 
 def _normalise(name: str) -> str:
     name = name.lower().strip()
+    if "," in name:
+        parts = [p.strip() for p in name.split(",", 1)]
+        name = f"{parts[1]} {parts[0]}"
     name = re.sub(r"\bfc\b", "", name)
     name = re.sub(r"\bafc\b", "", name)
     name = re.sub(r"\bsc\b", "", name)
     name = re.sub(r"\bcf\b", "", name)
     name = re.sub(r"\bunited\b", "utd", name)
+    name = re.sub(r"\bjr\.?\b", "jr", name)
+    name = re.sub(r"\bsr\.?\b", "sr", name)
     name = name.replace("-", " ")
     name = re.sub(r"[^a-z0-9 ]", "", name)
     name = re.sub(r"\s+", " ", name).strip()
