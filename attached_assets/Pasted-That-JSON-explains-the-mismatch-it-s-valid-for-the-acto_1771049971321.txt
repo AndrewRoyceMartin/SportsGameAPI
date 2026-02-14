@@ -1,0 +1,83 @@
+That JSON explains the mismatch: it’s valid for the actor UI, but it’s almost certainly not the same shape your app is sending when it loops “7 day(s)” and gets 400.
+
+Two key points:
+
+The actor UI run succeeded with:
+
+{"league":"UFC","sportsbook":"Bet365"}
+
+
+So the actor itself is fine.
+
+Your app is getting 400 Bad Request when doing multi-day odds fetching, which means the app’s actor_input likely includes extra fields (dates/lookahead/books list/etc.) that the actor doesn’t accept, or uses the wrong key names (e.g., sportsbooks vs sportsbook, startDate vs date, etc.).
+
+What I need from you (one of these will pinpoint it immediately)
+Option A (best): show the exact actor_input your app is posting
+
+Add this temporarily right before run_actor_get_items(...) in odds_fetch.py:
+
+import json
+print("APIFY actor_input =>", json.dumps(actor_input, indent=2, sort_keys=True))
+
+
+Run once, then paste the printed JSON here.
+
+Option B: show the actor’s Input schema
+
+On the Apify actor page for harvest/sportsbook-odds-scraper, open the Input tab (the form definition). There’s usually a way to view/export the input schema (or at least the full list of input fields + names). Screenshot or paste the field list.
+
+Likely fix (based on what you posted)
+
+Your working input uses singular keys:
+
+league (string)
+
+sportsbook (string)
+
+If your app is sending any of these, it can trigger 400:
+
+sportsbooks: ["Bet365", "FanDuel"] (plural)
+
+books
+
+fromDate / toDate
+
+startDate / endDate
+
+days / lookahead
+
+date in the wrong format (expects YYYY-MM-DD but gets ISO datetime)
+
+nested config objects
+
+So the fix is: make your app’s actor_input exactly match the actor’s accepted keys (or build one run per sportsbook if only singular is supported).
+
+Example safe builder (single book, single league):
+
+actor_input = {
+    "league": apify_league_key,      # e.g. "UFC", "MLB", "ATP", "WTA"
+    "sportsbook": sportsbook_name,   # e.g. "Bet365"
+}
+
+
+Then your “multiple books” behaviour becomes:
+
+all_items = []
+for book in ["Bet365", "DraftKings", "FanDuel", "Caesars", "BetMGM"]:
+    actor_input = {"league": league_key, "sportsbook": book}
+    all_items.extend(run_actor_get_items(ACTOR_ID, actor_input, timeout=timeout))
+
+
+And your “multi-day” behaviour should be handled by deduping timestamps from the returned dataset items (as you already do), rather than trying to send date ranges unless the actor explicitly supports them.
+
+One more quick win: make 400 errors show the response body
+
+Your hardened Apify client should include the response text on 400; otherwise we’re flying blind. Add:
+
+if r.status_code == 400:
+    raise ApifyError(f"Apify 400 Bad Request: {r.text[:800]}")
+
+Next step
+
+Paste the actor_input printed by your app (Option A).
+Once I see it, I’ll tell you exactly which field name/value is causing the 400 and give you the corrected odds_fetch.py loop for multi-book + multi-day without breaking the rest of the pipeline.

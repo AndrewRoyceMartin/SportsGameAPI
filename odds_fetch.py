@@ -27,60 +27,49 @@ def fetch_odds_for_window(
     all_items: List[Dict[str, Any]] = []
     seen: set = set()
 
-    start = datetime.utcnow().date()
-    days = max(1, lookahead_days)
-    for i in range(days):
-        d = start + timedelta(days=i)
-        date_str = d.strftime("%Y-%m-%d")
-        actor_input: Dict[str, Any] = {
-            "league": harvest_league,
-            "date": date_str,
-        }
-        if sportsbook:
-            actor_input["sportsbook"] = sportsbook
+    actor_input: Dict[str, Any] = {
+        "league": harvest_league,
+    }
+    if sportsbook:
+        actor_input["sportsbook"] = sportsbook
 
-        try:
-            items = run_actor_get_items(actor_id, actor_input, timeout=timeout)
-        except ApifyTransientError as exc:
-            reason = str(exc)
-            logger.warning("Odds fetch skipped %s (transient): %s", date_str, reason)
-            _last_fetch_errors.append((date_str, reason))
-            time.sleep(2)
-            continue
-        except ApifyAuthError as exc:
-            reason = str(exc)
-            logger.error("Odds fetch fatal auth error: %s", reason)
-            _last_fetch_errors.append((date_str, reason))
+    try:
+        items = run_actor_get_items(actor_id, actor_input, timeout=timeout)
+    except ApifyTransientError as exc:
+        reason = str(exc)
+        logger.warning("Odds fetch transient error: %s", reason)
+        _last_fetch_errors.append(("all", reason))
+        return []
+    except ApifyAuthError as exc:
+        reason = str(exc)
+        logger.error("Odds fetch fatal auth error: %s", reason)
+        _last_fetch_errors.append(("all", reason))
+        _last_fatal_error = reason
+        return []
+    except ApifyError as exc:
+        reason = str(exc)
+        if "400 Bad Request" in reason:
+            logger.error("Odds fetch fatal 400 error: %s", reason)
             _last_fatal_error = reason
-            break
-        except ApifyError as exc:
-            reason = str(exc)
-            if "400 Bad Request" in reason:
-                logger.error("Odds fetch fatal 400 error: %s", reason)
-                _last_fetch_errors.append((date_str, reason))
-                _last_fatal_error = reason
-                break
-            logger.warning("Odds fetch skipped %s: %s", date_str, reason)
-            _last_fetch_errors.append((date_str, reason))
-            continue
-        except Exception as exc:
-            reason = str(exc)
-            logger.warning("Odds fetch skipped %s (unexpected): %s", date_str, reason)
-            _last_fetch_errors.append((date_str, reason))
-            continue
+        else:
+            logger.warning("Odds fetch error: %s", reason)
+        _last_fetch_errors.append(("all", reason))
+        return []
+    except Exception as exc:
+        reason = str(exc)
+        logger.warning("Odds fetch unexpected error: %s", reason)
+        _last_fetch_errors.append(("all", reason))
+        return []
 
-        for g in items:
-            home = (g.get("homeTeam") or {}).get("mediumName", "")
-            away = (g.get("awayTeam") or {}).get("mediumName", "")
-            t = g.get("scheduledTime", "")
-            key = (t, home, away)
-            if key in seen:
-                continue
-            seen.add(key)
-            all_items.append(g)
-
-        if i < days - 1:
-            time.sleep(0.5)
+    for g in items:
+        home = (g.get("homeTeam") or {}).get("mediumName", "")
+        away = (g.get("awayTeam") or {}).get("mediumName", "")
+        t = g.get("scheduledTime", "")
+        key = (t, home, away)
+        if key in seen:
+            continue
+        seen.add(key)
+        all_items.append(g)
 
     return all_items
 
