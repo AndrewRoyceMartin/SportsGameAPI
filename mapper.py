@@ -6,9 +6,31 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from thefuzz import fuzz
 
-TIME_WINDOW_HOURS = 2
-FUZZY_THRESHOLD = 65
-NAME_ONLY_THRESHOLD = 80
+TIME_WINDOW_HOURS = 4
+FUZZY_THRESHOLD = 60
+NAME_ONLY_THRESHOLD = 75
+
+_ALIASES = {
+    "psg": "paris saint germain",
+    "man city": "manchester city",
+    "man utd": "manchester utd",
+    "inter": "internazionale",
+    "inter milan": "internazionale",
+    "atletico madrid": "atletico de madrid",
+    "atlético madrid": "atletico de madrid",
+    "rb leipzig": "rasenballsport leipzig",
+    "ac milan": "milan",
+    "spurs": "tottenham",
+    "wolves": "wolverhampton",
+    "bayern": "bayern munich",
+    "bayern münchen": "bayern munich",
+    "barca": "barcelona",
+    "real": "real madrid",
+    "juve": "juventus",
+    "dortmund": "borussia dortmund",
+    "gladbach": "borussia monchengladbach",
+    "leverkusen": "bayer leverkusen",
+}
 
 
 def _normalise(name: str) -> str:
@@ -18,24 +40,15 @@ def _normalise(name: str) -> str:
     name = re.sub(r"\bsc\b", "", name)
     name = re.sub(r"\bcf\b", "", name)
     name = re.sub(r"\bunited\b", "utd", name)
+    name = name.replace("-", " ")
     name = re.sub(r"[^a-z0-9 ]", "", name)
     name = re.sub(r"\s+", " ", name).strip()
     return name
 
 
-def _parse_dt(s: str) -> Optional[datetime]:
-    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
-        try:
-            return datetime.strptime(s.strip(), fmt)
-        except (ValueError, AttributeError):
-            continue
-    return None
-
-
-def _time_close(dt1: Optional[datetime], dt2: Optional[datetime], hours: float = TIME_WINDOW_HOURS) -> bool:
-    if dt1 is None or dt2 is None:
-        return False
-    return abs((dt1 - dt2).total_seconds()) <= hours * 3600
+def _expand(name: str) -> str:
+    low = name.lower().strip()
+    return _ALIASES.get(low, low)
 
 
 def _name_score(a: str, b: str) -> int:
@@ -44,75 +57,70 @@ def _name_score(a: str, b: str) -> int:
         return 100
     if na in nb or nb in na:
         return 90
-    return fuzz.token_sort_ratio(na, nb)
+
+    ea, eb = _normalise(_expand(a)), _normalise(_expand(b))
+    if ea == eb:
+        return 95
+    if ea in eb or eb in ea:
+        return 88
+
+    score_raw = fuzz.token_sort_ratio(na, nb)
+    score_exp = fuzz.token_sort_ratio(ea, eb)
+    return max(score_raw, score_exp)
 
 
-def _infer_odds_date(odds_time: str, fixture_dates: List[str]) -> Optional[str]:
-    if not odds_time or not fixture_dates:
-        return None
-    unique_dates = sorted(set(d for d in fixture_dates if d))
-    if len(unique_dates) == 1:
-        return unique_dates[0]
+def _parse_iso(s: str) -> Optional[datetime]:
+    for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+        try:
+            return datetime.strptime(s.strip(), fmt)
+        except (ValueError, AttributeError):
+            continue
     return None
 
 
-def match_fixtures_to_odds(
-    fixtures: List[Dict[str, Any]],
-    odds_events: List[Dict[str, Any]],
+def match_games_to_odds(
+    fixtures: list,
+    harvest_games: List[Dict[str, Any]],
     time_window_hours: float = TIME_WINDOW_HOURS,
     fuzzy_threshold: int = FUZZY_THRESHOLD,
 ) -> List[Dict[str, Any]]:
     matched: List[Dict[str, Any]] = []
 
-    fx_dates = [fx.get("date_utc", "") for fx in fixtures]
-
     for fx in fixtures:
-        fx_home = fx.get("home_team", "")
-        fx_away = fx.get("away_team", "")
-        fx_date = fx.get("date_utc", "")
-        fx_time = fx.get("time", "")
-
-        fx_dt_str = fx_date
-        if fx_time:
-            fx_dt_str = f"{fx_date} {fx_time}"
-        fx_dt = _parse_dt(fx_dt_str)
+        fx_home = fx.home
+        fx_away = fx.away
+        fx_dt = fx.start_time_utc
 
         best_score = 0
-        best_odds_events: List[Dict[str, Any]] = []
+        best_odds_game = None
 
-        for od in odds_events:
-            od_start = od.get("start_time", "")
-            od_dt = _parse_dt(od_start)
+        for og in harvest_games:
+            og_home = og.get("homeTeam", {}).get("mediumName", "")
+            og_away = og.get("awayTeam", {}).get("mediumName", "")
+            og_time_str = og.get("scheduledTime", "")
+            og_dt = _parse_iso(og_time_str)
 
-            both_have_time = fx_dt is not None and od_dt is not None
+            both_have_time = fx_dt is not None and og_dt is not None
             if both_have_time:
-                if not _time_close(fx_dt, od_dt, hours=time_window_hours):
+                diff = abs((fx_dt - og_dt).total_seconds())
+                if diff > time_window_hours * 3600:
                     continue
-            else:
-                pass
 
-            home_sc = _name_score(fx_home, od.get("home_team", ""))
-            away_sc = _name_score(fx_away, od.get("away_team", ""))
+            home_sc = _name_score(fx_home, og_home)
+            away_sc = _name_score(fx_away, og_away)
             avg_score = (home_sc + away_sc) / 2
 
             threshold = fuzzy_threshold if both_have_time else NAME_ONLY_THRESHOLD
 
             if avg_score >= threshold and avg_score > best_score:
                 best_score = avg_score
-                best_odds_events = [od]
-            elif avg_score == best_score and avg_score >= threshold:
-                best_odds_events.append(od)
+                best_odds_game = og
 
-        if best_odds_events:
-            for od in best_odds_events:
-                matched.append({
-                    **fx,
-                    "odds_event": od.get("event", ""),
-                    "odds_competition": od.get("competition", ""),
-                    "market": od.get("market", ""),
-                    "selection": od.get("selection", ""),
-                    "odds_decimal": od.get("odds_decimal"),
-                    "match_confidence": best_score,
-                })
+        if best_odds_game:
+            matched.append({
+                "fixture": fx,
+                "odds_game": best_odds_game,
+                "match_confidence": best_score,
+            })
 
     return matched

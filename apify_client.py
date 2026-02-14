@@ -2,8 +2,6 @@ import os
 import requests
 from typing import Any, Dict, List, Optional
 
-APIFY_TOKEN = os.getenv("APIFY_TOKEN")
-
 
 def run_actor_get_items(
     actor_id: str,
@@ -11,12 +9,13 @@ def run_actor_get_items(
     limit: Optional[int] = None,
     timeout: int = 600,
 ) -> List[Dict[str, Any]]:
-    if not APIFY_TOKEN:
+    token = os.getenv("APIFY_TOKEN")
+    if not token:
         raise RuntimeError("Missing APIFY_TOKEN in environment")
 
     url = f"https://api.apify.com/v2/acts/{actor_id}/run-sync-get-dataset-items"
     params: Dict[str, Any] = {
-        "token": APIFY_TOKEN,
+        "token": token,
         "format": "json",
         "clean": "true",
     }

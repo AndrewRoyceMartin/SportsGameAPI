@@ -21,9 +21,27 @@ class Game:
 _SOFASCORE_BASE = "https://api.sofascore.com/api/v1"
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
 
+LEAGUE_SPORT_MAP = {
+    "champions league": "football",
+    "nba": "basketball",
+    "nhl": "ice-hockey",
+    "nfl": "american-football",
+    "college football": "american-football",
+    "college basketball": "basketball",
+    "ufc": "mma",
+}
 
-def _fetch_events_for_date(d: date) -> List[Dict[str, Any]]:
-    url = f"{_SOFASCORE_BASE}/sport/football/scheduled-events/{d.isoformat()}"
+
+def _sport_for_league(league: str) -> str:
+    league_lower = league.lower()
+    for key, sport in LEAGUE_SPORT_MAP.items():
+        if key in league_lower:
+            return sport
+    return "football"
+
+
+def _fetch_events_for_date(d: date, sport: str = "football") -> List[Dict[str, Any]]:
+    url = f"{_SOFASCORE_BASE}/sport/{sport}/scheduled-events/{d.isoformat()}"
     r = requests.get(url, headers=_HEADERS, timeout=30)
     r.raise_for_status()
     return r.json().get("events", [])
@@ -85,13 +103,14 @@ def _collect_games(
     league: str,
     wanted_status: str,
 ) -> List[Game]:
+    sport = _sport_for_league(league)
     games: List[Game] = []
     seen_ids: Set[int] = set()
 
     d = date_from
     while d <= date_to:
         try:
-            events = _fetch_events_for_date(d)
+            events = _fetch_events_for_date(d, sport=sport)
         except Exception:
             d += timedelta(days=1)
             continue
