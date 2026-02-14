@@ -190,8 +190,39 @@ def _fetch_events_for_date(
     return []
 
 
+_BAD_STATUSES = {"canceled", "cancelled", "postponed", "interrupted", "suspended", "abandoned"}
+
+_TOURNAMENT_DENY = [
+    "rising stars",
+    "all-star",
+    "all star",
+    "celebrity",
+    "summer league",
+    "preseason",
+    "pre-season",
+    "exhibition",
+    "skills challenge",
+    "slam dunk",
+    "three-point",
+    "3-point",
+    "pro bowl",
+    "combine",
+    "draft",
+]
+
+
 def _parse_game(ev: Dict[str, Any]) -> Optional[Game]:
     try:
+        status_obj = ev.get("status", {})
+        status_type = (
+            status_obj.get("type", "")
+            if isinstance(status_obj, dict)
+            else str(status_obj)
+        ).lower()
+
+        if status_type in _BAD_STATUSES:
+            return None
+
         home_team = ev.get("homeTeam", {})
         away_team = ev.get("awayTeam", {})
         home_name = home_team.get("name") or home_team.get("shortName", "")
@@ -211,12 +242,9 @@ def _parse_game(ev: Dict[str, Any]) -> Optional[Game]:
         if country:
             league = f"{league} ({country})"
 
-        status_obj = ev.get("status", {})
-        status_type = (
-            status_obj.get("type", "")
-            if isinstance(status_obj, dict)
-            else str(status_obj)
-        ).lower()
+        league_lower = league.lower()
+        if any(deny in league_lower for deny in _TOURNAMENT_DENY):
+            return None
 
         if status_type == "finished":
             status = "completed"

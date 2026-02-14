@@ -1,0 +1,110 @@
+SofaScore source is reachable and returning events for the basketball endpoint on that date. So “source data exists” is not the issue for NBA.
+
+What it also shows is an important nuance: the scheduled-events feed includes lots of basketball events that are not regular NBA season games (e.g., “NBA Rising Stars Challenge” and even “Canceled”). If your app is filtering with loose accept patterns like ["nba"], you can accidentally include/exclude the wrong stuff depending on the tournament name that day.
+
+What we should validate from that response (to ensure “correct source data”)
+
+For each event in the feed, the key fields for your pipeline are:
+
+tournament.name (and/or uniqueTournament.name)
+
+status.type (finished/upcoming/canceled/postponed)
+
+startTimestamp
+
+homeTeam.name, awayTeam.name
+
+Immediate action: tighten the NBA accept patterns
+
+Right now your routing for NBA uses:
+
+accept=["nba"]
+
+
+But your sample tournament is “NBA Rising Stars Challenge” (contains “nba”) — which passes, even though it’s not what you want for Elo/fixtures.
+
+Better approach:
+
+Use uniqueTournament.slug or uniqueTournament.id when possible (more stable)
+
+Or accept only the core NBA tournament strings you actually want
+
+At minimum, add exclusions:
+
+exclude tournaments containing “rising stars”, “all-star”, “challenge”, “summer league”, etc.
+
+exclude status types: canceled, postponed, interrupted
+
+Quick patch (no refactor) to improve correctness
+
+In _parse_game or right after it, reject non-playable statuses:
+
+BAD_STATUSES = {"canceled", "postponed", "interrupted"}
+
+if status_type in BAD_STATUSES:
+    return None
+
+
+And for NBA specifically, add a deny-list check before appending:
+
+DENY = ["rising stars", "all-star", "summer league", "celebrity"]
+if any(x in game.league.lower() for x in DENY):
+    continue
+
+
+That alone prevents your NBA model being trained on “event” games that don’t behave like NBA.
+
+Why this matters for your “works across sports” goal
+
+When you add sports/leagues, the #1 silent failure is:
+
+“SofaScore returned events, but not the competition you thought”
+which leads to:
+
+no history results (because you filtered wrong)
+
+weird Elo ratings
+
+empty fixtures
+
+mismatches with odds
+
+One more source-data check (fast)
+
+To confirm you can reliably filter to true NBA games, do this:
+
+In your fetched events, locate any event that is a normal NBA game and check:
+
+uniqueTournament.slug
+
+tournament.slug
+
+tournament.name
+
+If you paste just one normal NBA regular-season game object (or even just those fields), I’ll give you the exact accept patterns (or ID-based filter) that will be stable.
+
+What to paste (minimal)
+
+From a normal NBA game event, paste:
+
+tournament.name
+
+tournament.slug
+
+uniqueTournament.name
+
+uniqueTournament.slug
+
+status.type
+
+That’s enough to lock down routing properly.
+
+Summary
+
+✅ SofaScore endpoint works and returns events.
+
+⚠️ Your current accept pattern ("nba") is too broad and will include All-Star/Rising Stars style events.
+
+Next: tighten routing using tournament identifiers or deny-lists + bad-status filters.
+
+Send me those 5 fields from a normal NBA game and I’ll give you a “correct-by-construction” filter you can reuse for AFL/NRL/NBL later.
