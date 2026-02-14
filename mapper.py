@@ -70,6 +70,9 @@ def _name_score(a: str, b: str) -> int:
 
 
 def _parse_iso(s: str) -> Optional[datetime]:
+    if not s or not isinstance(s, str):
+        return None
+    cleaned = re.sub(r"\.\d+", "", s.strip())
     for fmt in (
         "%Y-%m-%dT%H:%M:%SZ",
         "%Y-%m-%dT%H:%M:%S",
@@ -77,8 +80,8 @@ def _parse_iso(s: str) -> Optional[datetime]:
         "%Y-%m-%d",
     ):
         try:
-            return datetime.strptime(s.strip(), fmt)
-        except (ValueError, AttributeError):
+            return datetime.strptime(cleaned, fmt)
+        except ValueError:
             continue
     return None
 
@@ -113,7 +116,13 @@ def match_games_to_odds(
 
             home_sc = _name_score(fx_home, og_home)
             away_sc = _name_score(fx_away, og_away)
-            avg_score = (home_sc + away_sc) / 2
+            avg_normal = (home_sc + away_sc) / 2
+
+            home_sc_flip = _name_score(fx_home, og_away)
+            away_sc_flip = _name_score(fx_away, og_home)
+            avg_flipped = (home_sc_flip + away_sc_flip) / 2
+
+            avg_score = max(avg_normal, avg_flipped)
 
             threshold = fuzzy_threshold if both_have_time else NAME_ONLY_THRESHOLD
 
