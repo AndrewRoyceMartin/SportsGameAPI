@@ -69,6 +69,69 @@ def show_diagnostics(
             )
 
 
+def explain_empty_run(
+    odds_fetched: int,
+    odds_with_lines: Optional[int],
+    fixtures_fetched: Optional[int],
+    matched: Optional[int],
+    min_edge: float,
+    odds_range: tuple,
+    league_label: str,
+) -> None:
+    if odds_fetched == 0:
+        st.info(
+            f"No odds data available for **{league_label}** right now. "
+            "The sportsbooks may not have posted lines yet. Try again closer to game time."
+        )
+    elif odds_with_lines is not None and odds_with_lines == 0:
+        st.warning(
+            f"Found {odds_fetched} scheduled game(s) but none have moneyline prices posted yet. "
+            "Lines typically appear 1-2 days before game time."
+        )
+    elif fixtures_fetched is not None and fixtures_fetched == 0:
+        st.info(
+            f"Odds found ({odds_fetched} games) but no upcoming fixtures from the stats source. "
+            "The schedule may not be published yet for this league window."
+        )
+    elif matched is not None and matched == 0:
+        st.warning(
+            f"Found {fixtures_fetched} fixture(s) and {odds_fetched} odds event(s), but could not "
+            "match any of them together. Team/player names likely differ between sources. "
+            "Check the **Unmatched Samples** section below for details."
+        )
+    else:
+        edge_pct = min_edge * 100
+        st.info(
+            f"All {matched} matched game(s) were checked, but none passed filters: "
+            f"min edge {edge_pct:.0f}%, odds range {odds_range[0]:.2f} - {odds_range[1]:.2f}. "
+            "Try lowering the min edge or widening the odds range."
+        )
+
+
+def show_unmatched_samples(
+    unmatched_fixtures: List[Dict[str, Any]],
+    unmatched_odds: List[Dict[str, Any]],
+) -> None:
+    if not unmatched_fixtures and not unmatched_odds:
+        return
+    with st.expander("Unmatched samples (debug mapping issues)", expanded=False):
+        if unmatched_fixtures:
+            st.markdown("**Fixtures without matching odds** (top 10)")
+            rows = []
+            for f in unmatched_fixtures:
+                rows.append({"Home": f["home"], "Away": f["away"], "Time": f["time"]})
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        if unmatched_odds:
+            st.markdown("**Odds events without matching fixtures** (top 10)")
+            rows = []
+            for o in unmatched_odds:
+                rows.append({"Home": o["home"], "Away": o["away"], "Time": o["time"]})
+            st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+        st.caption(
+            "If team names look similar but don't match, aliases may need to be added to mapper.py."
+        )
+
+
 def show_harvest_games(harvest_games: List[Dict[str, Any]]) -> None:
     with st.expander("Scheduled games from sportsbooks"):
         for g in harvest_games:
@@ -124,6 +187,25 @@ def show_results_explainer() -> None:
         )
 
 
+AVAILABLE_COLUMNS = [
+    "Match", "Date", "Time", "Pick", "Odds", "Model %",
+    "Implied %", "Edge", "EV/unit", "Elo H", "Elo A",
+    "Confidence",
+]
+
+DEFAULT_COLUMNS = [
+    "Match", "Date", "Time", "Pick", "Odds", "Model %",
+    "Implied %", "Edge", "EV/unit",
+]
+
+SORT_PRESETS = {
+    "Best EV": "EV/unit",
+    "Highest Edge": "Edge",
+    "Soonest Start": "sort_time",
+    "Best Confidence": "Confidence",
+}
+
+
 def display_value_bets_table(
     value_bets: List[Dict[str, Any]], league_label: str
 ) -> bool:
@@ -131,6 +213,22 @@ def display_value_bets_table(
     show_results_explainer()
 
     experimental = not is_two_outcome(league_label)
+
+    c1, c2 = st.columns([1, 1])
+    with c1:
+        sort_choice = st.selectbox(
+            "Sort by",
+            options=list(SORT_PRESETS.keys()),
+            index=0,
+            key="sort_preset",
+        )
+    with c2:
+        visible_cols = st.multiselect(
+            "Columns",
+            options=AVAILABLE_COLUMNS,
+            default=DEFAULT_COLUMNS,
+            key="visible_cols",
+        )
 
     rows = []
     for vb in value_bets:
@@ -140,17 +238,46 @@ def display_value_bets_table(
                 "Date": vb["date"],
                 "Time": vb["time"],
                 "Pick": vb["selection"],
-                "Odds": f"{vb['odds_decimal']:.2f}",
-                "Model %": f"{vb['model_prob']:.1%}",
-                "Implied %": f"{vb['implied_prob']:.1%}",
-                "Edge": f"{vb['edge']:.1%}",
-                "EV/unit": f"{vb['ev_per_unit']:.3f}",
-                "Elo H": f"{vb['home_elo']:.0f}",
-                "Elo A": f"{vb['away_elo']:.0f}",
+                "_odds": vb["odds_decimal"],
+                "_model_p": vb["model_prob"],
+                "_implied_p": vb["implied_prob"],
+                "_edge": vb["edge"],
+                "_ev": vb["ev_per_unit"],
+                "_elo_h": vb["home_elo"],
+                "_elo_a": vb["away_elo"],
+                "_conf": vb["match_confidence"],
+                "sort_time": vb["date"] + " " + vb["time"],
             }
         )
 
-    st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+    df = pd.DataFrame(rows)
+
+    sort_map = {
+        "EV/unit": "_ev",
+        "Edge": "_edge",
+        "Confidence": "_conf",
+        "sort_time": "sort_time",
+    }
+    sort_col = sort_map.get(SORT_PRESETS.get(sort_choice, "EV/unit"), "_ev")
+    if sort_col == "sort_time":
+        df = df.sort_values("sort_time", ascending=True)
+    else:
+        df = df.sort_values(sort_col, ascending=False)
+
+    df["Odds"] = df["_odds"].apply(lambda x: f"{x:.2f}")
+    df["Model %"] = df["_model_p"].apply(lambda x: f"{x:.1%}")
+    df["Implied %"] = df["_implied_p"].apply(lambda x: f"{x:.1%}")
+    df["Edge"] = df["_edge"].apply(lambda x: f"{x:.1%}")
+    df["EV/unit"] = df["_ev"].apply(lambda x: f"{x:.3f}")
+    df["Elo H"] = df["_elo_h"].apply(lambda x: f"{x:.0f}")
+    df["Elo A"] = df["_elo_a"].apply(lambda x: f"{x:.0f}")
+    df["Confidence"] = df["_conf"].apply(lambda x: f"{x:.0f}%")
+
+    display_cols = [c for c in visible_cols if c in df.columns]
+    if not display_cols:
+        display_cols = DEFAULT_COLUMNS
+
+    st.dataframe(df[display_cols], use_container_width=True, hide_index=True)
     return experimental
 
 

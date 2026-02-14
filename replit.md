@@ -4,18 +4,18 @@
 A Streamlit-based sports prediction application that finds value bets by comparing Elo model predictions against live sportsbook odds. Odds data sourced from Apify (harvest/sportsbook-odds-scraper), stats/fixtures/results from SofaScore public API. Uses median consensus pricing across multiple sportsbooks to identify betting edges.
 
 ## Project Architecture
-- `app.py` - Streamlit entry point: page config, sidebar controls, tab layout; delegates to pipeline.py and ui_helpers.py
-- `pipeline.py` - Data pipeline orchestration: fetch odds/fixtures, build Elo, match, compute EV, dedup
-- `ui_helpers.py` - Reusable UI components: diagnostics panel, harvest games display, results explainer, save controls, saved picks table
+- `app.py` - Streamlit entry point: page config, sidebar controls (sport filter, search, run profiles, lock defaults), tab layout; delegates to pipeline.py and ui_helpers.py
+- `pipeline.py` - Data pipeline orchestration: fetch odds/fixtures, build Elo, match, compute EV, dedup, get_unmatched
+- `ui_helpers.py` - Reusable UI components: diagnostics panel, reason-coded empty states, unmatched samples, sorting presets, column toggles, harvest games display, results explainer, save controls, saved picks table
 - `config_env.py` - Centralized environment audit: required/stale secret checks, startup validation
 - `apify_client.py` - Unified Apify REST client (run actor, get dataset items)
-- `stats_provider.py` - SofaScore API client with Game dataclass, multi-sport support (football, basketball, ice-hockey, american-football, mma)
-- `league_map.py` - Maps league labels to SofaScore filters and Harvest actor league keys; groups leagues into Production vs Experimental
-- `league_defaults.py` - Per-league default filter values (min edge, odds range, history/lookahead days, top N)
+- `stats_provider.py` - SofaScore API client with Game dataclass, multi-sport support (football, basketball, ice-hockey, american-football, baseball, tennis, mma)
+- `league_map.py` - Maps league labels to SofaScore filters and Harvest actor league keys; groups leagues into Production vs Experimental; LEAGUE_SPORT mapping for sport filter UI
+- `league_defaults.py` - Per-league default filter values (min edge, odds range, history/lookahead days, top N); RUN_PROFILES (Conservative/Balanced/Aggressive) with apply_profile()
 - `odds_fetch.py` - Multi-day odds fetching with deduplication across lookahead window
 - `odds_math.py` - American-to-decimal conversion, implied probability calculation
 - `odds_extract.py` - MoneylineSnapshot dataclass, moneyline extraction, consensus median pricing
-- `mapper.py` - Match Game fixtures to harvest odds events (time window + fuzzy team names + alias expansion)
+- `mapper.py` - Match Game fixtures to harvest odds events (time window + fuzzy team names + alias expansion); handles "Surname, Name" tennis format
 - `value_engine.py` - Core math: implied probability, edge, expected value calculations
 - `store.py` - SQLite store for picks, odds-at-time, and results tracking
 - `features.py` - Elo rating system with home advantage
@@ -51,17 +51,32 @@ SofaScore provides fixtures/results for all of these via sport-specific endpoint
 - Game dataclass: league, start_time_utc, home, away, home_score, away_score, status
 
 ## Value Engine Pipeline
-1. User selects league from dropdown (defaults to NBA, production leagues first)
-2. Per-league defaults auto-applied (min edge, odds range, history/lookahead days)
-3. Fetch historical results via SofaScore → build Elo ratings
-4. Fetch upcoming fixtures via SofaScore (lookahead window)
-5. Fetch live odds from Apify harvest actor across lookahead window (multi-day, deduped)
-6. Match fixtures to odds games via fuzzy team names + time window (mapper.py)
-7. For each matched game: compute consensus median moneyline odds (home/away)
-8. Compute model probability from Elo, implied probability from odds
-9. Calculate edge (model_p - implied_p) and EV per unit stake for both sides
-10. Filter by min edge, odds range; rank by edge; display top N
-11. 3-outcome leagues: dedup best side per match, require explicit save opt-in, tag as experimental
+1. User selects sport filter + search to narrow leagues, then picks a league
+2. Run profile (Conservative/Balanced/Aggressive) adjusts defaults automatically
+3. Per-league defaults auto-applied with profile multipliers (min edge, odds range, history/lookahead days)
+4. Lock defaults toggle prevents accidental manual edits
+5. Fetch historical results via SofaScore → build Elo ratings
+6. Fetch upcoming fixtures via SofaScore (lookahead window)
+7. Fetch live odds from Apify harvest actor across lookahead window (multi-day, deduped)
+8. Match fixtures to odds games via fuzzy team names + time window (mapper.py)
+9. For each matched game: compute consensus median moneyline odds (home/away)
+10. Compute model probability from Elo, implied probability from odds
+11. Calculate edge (model_p - implied_p) and EV per unit stake for both sides
+12. Filter by min edge, odds range; rank by edge; display top N
+13. Reason-coded empty-state messages explain why no value bets were found
+14. Unmatched samples expander shows fixtures/odds that failed to pair
+15. 3-outcome leagues: dedup best side per match, require explicit save opt-in, tag as experimental
+
+## UI Features
+- **Sport filter**: Filter leagues by sport category (All, Basketball, Football, Hockey, etc.)
+- **Search**: Live text filtering of league names
+- **Run profiles**: Conservative (higher edge, tighter odds), Balanced (league defaults), Aggressive (lower edge, wider odds)
+- **Lock defaults**: Toggle to prevent accidental filter changes
+- **Defaults indicator**: Caption showing current league, sport, and profile
+- **Sorting presets**: Sort results by Best EV, Highest Edge, Soonest Start, Best Confidence
+- **Column toggles**: Show/hide columns (Match, Date, Time, Pick, Odds, Model %, Implied %, Edge, EV/unit, Elo H/A, Confidence)
+- **Unmatched samples**: Debug expander showing top 10 unmatched fixtures/odds events
+- **Reason-coded empty states**: Specific explanations for why no value bets were found at each pipeline stage
 
 ## Production Safety
 - 2-outcome leagues (NBA, NFL, NHL, MLB, ATP Tennis, WTA Tennis, College FB/BB): full pipeline, normal save

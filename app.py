@@ -9,8 +9,10 @@ from league_map import (
     available_leagues,
     is_two_outcome,
     is_separator,
+    ALL_SPORTS,
+    LEAGUE_SPORT,
 )
-from league_defaults import DEFAULTS
+from league_defaults import DEFAULTS, RUN_PROFILES, apply_profile
 from stats_provider import clear_events_cache
 from pipeline import (
     fetch_elo_ratings,
@@ -21,6 +23,7 @@ from pipeline import (
     match_fixtures_to_odds,
     compute_values,
     dedup_best_side,
+    get_unmatched,
 )
 from ui_helpers import (
     show_diagnostics,
@@ -29,6 +32,8 @@ from ui_helpers import (
     display_value_bets_table,
     render_save_controls,
     render_saved_picks,
+    explain_empty_run,
+    show_unmatched_samples,
 )
 
 
@@ -43,23 +48,56 @@ def main():
     with st.sidebar:
         st.header("Configuration")
 
-        leagues = available_leagues()
+        sport_filter = st.selectbox(
+            "Sport",
+            options=ALL_SPORTS,
+            index=0,
+            help="Filter leagues by sport category.",
+        )
+        league_search = st.text_input(
+            "Search leagues",
+            value="",
+            placeholder="Type to filter...",
+            help="Filter leagues by name.",
+        )
+
+        leagues = available_leagues(sport_filter=sport_filter, search=league_search)
+        if not leagues:
+            st.warning("No leagues match your filter. Try broadening your search.")
+            st.stop()
+
         default_idx = leagues.index("NBA") if "NBA" in leagues else 0
         league_label = st.selectbox(
             "League",
             options=leagues,
             index=default_idx,
-            help="Choose the sport/league to scan. Production leagues are 2-outcome markets. Experimental leagues may overstate edge (e.g., soccer draw risk).",
+            help="Choose the sport/league to scan. Production leagues are 2-outcome markets. Experimental leagues may overstate edge.",
         )
 
         if is_separator(league_label):
             st.warning("Please select a league above or below the separator.")
             st.stop()
 
+        st.divider()
+
+        profile = st.selectbox(
+            "Run Profile",
+            options=list(RUN_PROFILES.keys()),
+            index=1,
+            help="Conservative = higher min edge, tighter odds. Balanced = league defaults. Aggressive = lower min edge, wider odds.",
+        )
+
+        lock_defaults = st.toggle(
+            "Lock defaults",
+            value=False,
+            help="When on, changing league forces defaults and disables manual edits.",
+        )
+
         def _apply_defaults(league: str):
             d = DEFAULTS.get(league)
             if not d:
                 return
+            d = apply_profile(d, profile)
             st.session_state["min_edge"] = d["min_edge"]
             st.session_state["odds_range"] = (d["min_odds"], d["max_odds"])
             st.session_state["history_days"] = d["history_days"]
@@ -67,11 +105,14 @@ def main():
             st.session_state["top_n"] = d["top_n"]
 
         prev = st.session_state.get("_prev_league")
-        if prev != league_label:
+        prev_profile = st.session_state.get("_prev_profile")
+        if prev != league_label or prev_profile != profile:
             _apply_defaults(league_label)
             st.session_state["_prev_league"] = league_label
+            st.session_state["_prev_profile"] = profile
 
         d_fb = DEFAULTS.get(league_label, {})
+        d_fb = apply_profile(d_fb, profile) if d_fb else d_fb
         if "min_edge" not in st.session_state:
             st.session_state["min_edge"] = d_fb.get("min_edge", 5)
         if "odds_range" not in st.session_state:
@@ -86,6 +127,9 @@ def main():
         if "lookahead_days" not in st.session_state:
             st.session_state["lookahead_days"] = d_fb.get("lookahead_days", 3)
 
+        sport_tag = LEAGUE_SPORT.get(league_label, "")
+        st.caption(f"Defaults applied for: **{league_label}** ({sport_tag}) \u2014 {profile}")
+
         st.subheader("Value Filters")
         min_edge_pct = st.slider(
             "Min Edge %",
@@ -93,7 +137,8 @@ def main():
             30,
             step=1,
             key="min_edge",
-            help="Only show bets where the model's win probability is at least this much higher than the market-implied probability. Example: 5% means model says 55% vs market 50%.",
+            disabled=lock_defaults,
+            help="Only show bets where the model's win probability is at least this much higher than the market-implied probability.",
         )
         min_edge_val = min_edge_pct / 100.0
         odds_range = st.slider(
@@ -102,7 +147,8 @@ def main():
             10.0,
             step=0.05,
             key="odds_range",
-            help="Only consider bets with decimal odds inside this range. Lower odds = favourites; higher odds = underdogs. Narrowing this can reduce volatility.",
+            disabled=lock_defaults,
+            help="Only consider bets with decimal odds inside this range.",
         )
         top_n_options = [5, 10, 15, 20, 25]
         top_n_val = st.session_state["top_n"]
@@ -111,7 +157,8 @@ def main():
             "Max Results",
             options=top_n_options,
             index=top_n_idx,
-            help="Show at most this many top-ranked bets after filtering. Ranked by expected value (EV/unit).",
+            disabled=lock_defaults,
+            help="Show at most this many top-ranked bets after filtering.",
         )
 
         st.subheader("History Window")
@@ -121,7 +168,8 @@ def main():
             365,
             step=10,
             key="history_days",
-            help="How far back to build team ratings from past results. Longer = more stable; shorter = more responsive to recent form.",
+            disabled=lock_defaults,
+            help="How far back to build team ratings from past results.",
         )
         lookahead_days = st.slider(
             "Lookahead (days)",
@@ -129,7 +177,8 @@ def main():
             14,
             step=1,
             key="lookahead_days",
-            help="How many days ahead to search for upcoming fixtures and odds. If odds aren't posted yet, try a shorter window or wait until closer to game time.",
+            disabled=lock_defaults,
+            help="How many days ahead to search for upcoming fixtures and odds.",
         )
 
         if st.button("Reset filters to league defaults"):
@@ -223,8 +272,14 @@ def _run_pipeline(
             return
 
         if not harvest_games:
-            st.info(f"No odds data available for {league_label} right now.")
             progress.empty()
+            explain_empty_run(0, None, None, None, min_edge, odds_range, league_label)
+            show_diagnostics(
+                odds_fetched=0,
+                odds_with_lines=0,
+                fixtures_fetched=None,
+                matched=None,
+            )
             return
 
         games_with_odds = count_games_with_odds(harvest_games)
@@ -232,9 +287,8 @@ def _run_pipeline(
 
         if games_with_odds == 0:
             progress.empty()
-            st.warning(
-                f"Found {len(harvest_games)} scheduled {league_label} game(s) but "
-                f"0 have posted moneylines yet. Lines typically appear 1\u20132 days before game time."
+            explain_empty_run(
+                len(harvest_games), 0, None, None, min_edge, odds_range, league_label
             )
             if earliest_dt:
                 st.info(
@@ -257,8 +311,8 @@ def _run_pipeline(
         )
         if not upcoming:
             progress.empty()
-            st.info(
-                f"No upcoming fixtures found for {league_label} through {fixture_end}."
+            explain_empty_run(
+                len(harvest_games), games_with_odds, 0, None, min_edge, odds_range, league_label
             )
             show_diagnostics(
                 odds_fetched=len(harvest_games),
@@ -276,9 +330,9 @@ def _run_pipeline(
 
         if not matched:
             progress.empty()
-            st.warning(
-                f"Could not match any of {len(upcoming)} fixtures to "
-                f"{len(harvest_games)} odds events. Team names may differ between sources."
+            explain_empty_run(
+                len(harvest_games), games_with_odds, len(upcoming), 0,
+                min_edge, odds_range, league_label,
             )
             show_diagnostics(
                 odds_fetched=len(harvest_games),
@@ -286,6 +340,8 @@ def _run_pipeline(
                 fixtures_fetched=len(upcoming),
                 matched=0,
             )
+            unmatched_fx, unmatched_odds = get_unmatched(upcoming, harvest_games, [])
+            show_unmatched_samples(unmatched_fx, unmatched_odds)
             show_harvest_games(harvest_games)
             return
 
@@ -306,10 +362,14 @@ def _run_pipeline(
             value_bets=len(value_bets),
         )
 
+        unmatched_fx, unmatched_odds = get_unmatched(upcoming, harvest_games, matched)
+        if unmatched_fx or unmatched_odds:
+            show_unmatched_samples(unmatched_fx, unmatched_odds)
+
         if not value_bets:
-            st.info(
-                f"No value bets found with edge >= {min_edge:.0%} in odds range "
-                f"{odds_range[0]:.2f} \u2013 {odds_range[1]:.2f}. Try adjusting filters."
+            explain_empty_run(
+                len(harvest_games), games_with_odds, len(upcoming), len(matched),
+                min_edge, odds_range, league_label,
             )
             show_matched_summary(matched, elo_ratings)
             return

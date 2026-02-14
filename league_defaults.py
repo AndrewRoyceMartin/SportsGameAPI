@@ -1,3 +1,33 @@
+RUN_PROFILES = {
+    "Conservative": {
+        "min_edge_mult": 1.5,
+        "odds_min_add": 0.20,
+        "odds_max_add": -0.50,
+    },
+    "Balanced": {
+        "min_edge_mult": 1.0,
+        "odds_min_add": 0.0,
+        "odds_max_add": 0.0,
+    },
+    "Aggressive": {
+        "min_edge_mult": 0.6,
+        "odds_min_add": -0.10,
+        "odds_max_add": 1.00,
+    },
+}
+
+
+def apply_profile(defaults: dict, profile: str) -> dict:
+    p = RUN_PROFILES.get(profile)
+    if not p or not defaults:
+        return defaults
+    d = dict(defaults)
+    d["min_edge"] = max(1, round(d["min_edge"] * p["min_edge_mult"]))
+    d["min_odds"] = max(1.10, round(d["min_odds"] + p["odds_min_add"], 2))
+    d["max_odds"] = max(d["min_odds"] + 0.50, round(d["max_odds"] + p["odds_max_add"], 2))
+    return d
+
+
 DEFAULTS = {
     "NBA": {
         "min_edge": 3,

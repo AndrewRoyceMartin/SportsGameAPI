@@ -29,6 +29,21 @@ EXPERIMENTAL_LEAGUES = [
 
 _SEPARATOR = "\u2014 Experimental \u2014"
 
+LEAGUE_SPORT = {
+    "NBA": "Basketball",
+    "College Basketball": "Basketball",
+    "NFL": "Football",
+    "College Football": "Football",
+    "NHL": "Hockey",
+    "MLB": "Baseball",
+    "ATP Tennis": "Tennis",
+    "WTA Tennis": "Tennis",
+    "Champions League": "Soccer",
+    "UFC": "MMA",
+}
+
+ALL_SPORTS = ["All"] + sorted(set(LEAGUE_SPORT.values()))
+
 
 def sofascore_to_harvest(league_label: str) -> str | None:
     for sofascore_substr, harvest_key in LEAGUE_MAP.items():
@@ -37,8 +52,22 @@ def sofascore_to_harvest(league_label: str) -> str | None:
     return None
 
 
-def available_leagues() -> list[str]:
-    return TWO_OUTCOME_LEAGUES + [_SEPARATOR] + EXPERIMENTAL_LEAGUES
+def available_leagues(sport_filter: str = "All", search: str = "") -> list[str]:
+    search_lower = search.strip().lower()
+
+    def _matches(league: str) -> bool:
+        if sport_filter != "All" and LEAGUE_SPORT.get(league, "") != sport_filter:
+            return False
+        if search_lower and search_lower not in league.lower():
+            return False
+        return True
+
+    prod = [l for l in TWO_OUTCOME_LEAGUES if _matches(l)]
+    exp = [l for l in EXPERIMENTAL_LEAGUES if _matches(l)]
+
+    if prod and exp:
+        return prod + [_SEPARATOR] + exp
+    return prod + exp
 
 
 def is_two_outcome(league_label: str) -> bool:
@@ -47,5 +76,3 @@ def is_two_outcome(league_label: str) -> bool:
 
 def is_separator(league_label: str) -> bool:
     return league_label == _SEPARATOR
-
-

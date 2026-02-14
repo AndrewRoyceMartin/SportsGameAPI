@@ -1,0 +1,110 @@
+once you add more sports/leagues, the GUI should evolve so it stays fast to use and hard to misconfigure. You don’t need a redesign; a few targeted upgrades will make it feel “production-grade”.
+
+GUI updates worth doing now (minimal change, big payoff)
+1) League picker becomes “League + Sport” with search
+
+When you go beyond ~8 leagues, a flat dropdown gets annoying.
+
+Add a Sport filter (All / Basketball / Hockey / Football / Baseball / Tennis / MMA)
+
+Add a search box that filters the league list live
+
+Keep Production leagues above Experimental
+
+Implementation idea (Streamlit):
+
+sport_filter = st.selectbox(...)
+
+search = st.text_input("Search leagues")
+
+Filter the leagues before feeding the selectbox.
+
+2) Auto-defaults should be visible and “sticky”
+
+You already auto-apply defaults on league change — good. Make it obvious:
+
+Show a small “Defaults applied for: NBA” line
+
+Add a “Lock defaults” toggle:
+
+When ON: changing league forces defaults and disables manual edits (prevents accidental bad configs)
+
+When OFF: power-users can tweak
+
+3) Market mode selector (prevents future confusion)
+
+As you add sports, “moneyline/winner” naming differs.
+Add a Market dropdown with guardrails:
+
+“Moneyline / Winner (2-outcome)” (default)
+
+“Experimental: Draw markets / 3-way” (disabled or gated)
+This keeps soccer/UCL from silently producing nonsense.
+
+4) Better “No value bets” explanations (most common user pain)
+
+When you expand sports, you’ll hit more “empty” runs. Replace generic emptiness with reason codes:
+
+Odds found but no lines posted
+
+Fixtures found but 0 matched (mapping issue)
+
+Matched games but 0 moneylines extracted
+
+Moneylines extracted but 0 pass filters (min edge too high, odds range too tight)
+You already have diagnostics counts—just add a one-paragraph explanation based on those counts.
+
+5) “Unmatched samples” expander (debug in the UI)
+
+Add an expander that shows:
+
+Top 10 fixtures that failed to match odds
+
+Top 10 odds events that didn’t map to fixtures
+Include their start times and team strings.
+This is the single best UI feature for scaling to new leagues.
+
+6) Column toggles + sorting presets for the results table
+
+As more sports come in, the table gets busy.
+
+Checkbox list to show/hide columns (edge, EV/unit, model p, implied p, consensus odds, book count, etc.)
+
+Sorting preset:
+
+“Best EV”
+
+“Highest Edge”
+
+“Soonest Start Time”
+
+“Most Books”
+
+7) Add a “Run profile” selector
+
+Different sports want different defaults. Instead of users tweaking every time:
+
+“Conservative” (higher min edge, tighter odds range)
+
+“Balanced”
+
+“Aggressive” (lower min edge, wider odds range)
+This is just a multiplier/override layer on league_defaults.py.
+
+What you don’t need yet
+
+Multi-page navigation redesign
+
+Complex user accounts
+
+A full settings panel with persistence (nice later)
+
+Quick plan (doable without breaking anything)
+
+Add Sport filter + search above league selectbox
+
+Add Reason-coded empty-state messages
+
+Add Unmatched samples expander
+
+Add sorting presets + column toggles

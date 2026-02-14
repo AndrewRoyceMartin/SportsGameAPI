@@ -74,6 +74,41 @@ def match_fixtures_to_odds(
     return match_games_to_odds(upcoming, harvest_games)
 
 
+def get_unmatched(
+    upcoming: List[Game],
+    harvest_games: List[Dict[str, Any]],
+    matched: List[Dict[str, Any]],
+) -> tuple:
+    matched_fixture_keys = set()
+    matched_odds_keys = set()
+    for m in matched:
+        fx = m["fixture"]
+        matched_fixture_keys.add((fx.home, fx.away))
+        og = m["odds_game"]
+        h = og.get("homeTeam", {}).get("mediumName", "")
+        a = og.get("awayTeam", {}).get("mediumName", "")
+        matched_odds_keys.add((h, a))
+
+    unmatched_fixtures = []
+    for fx in upcoming:
+        if (fx.home, fx.away) not in matched_fixture_keys:
+            unmatched_fixtures.append({
+                "home": fx.home,
+                "away": fx.away,
+                "time": fx.start_time_utc.strftime("%Y-%m-%d %H:%M UTC") if fx.start_time_utc else "?",
+            })
+
+    unmatched_odds = []
+    for og in harvest_games:
+        h = og.get("homeTeam", {}).get("mediumName", "")
+        a = og.get("awayTeam", {}).get("mediumName", "")
+        if (h, a) not in matched_odds_keys:
+            t = og.get("scheduledTime", "?")
+            unmatched_odds.append({"home": h, "away": a, "time": str(t)[:19]})
+
+    return unmatched_fixtures[:10], unmatched_odds[:10]
+
+
 def compute_values(
     matched: List[Dict[str, Any]],
     elo_ratings: dict,
