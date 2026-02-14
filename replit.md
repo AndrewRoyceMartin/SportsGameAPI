@@ -4,7 +4,9 @@
 A Streamlit-based sports prediction application that finds value bets by comparing Elo model predictions against live sportsbook odds. Odds data sourced from Apify (harvest/sportsbook-odds-scraper), stats/fixtures/results from SofaScore public API. Uses median consensus pricing across multiple sportsbooks to identify betting edges.
 
 ## Project Architecture
-- `app.py` - Main Streamlit application (Value Bets + Saved Picks tabs), full pipeline orchestration
+- `app.py` - Streamlit entry point: page config, sidebar controls, tab layout; delegates to pipeline.py and ui_helpers.py
+- `pipeline.py` - Data pipeline orchestration: fetch odds/fixtures, build Elo, match, compute EV, dedup
+- `ui_helpers.py` - Reusable UI components: diagnostics panel, harvest games display, results explainer, save controls, saved picks table
 - `apify_client.py` - Unified Apify REST client (run actor, get dataset items)
 - `stats_provider.py` - SofaScore API client with Game dataclass, multi-sport support (football, basketball, ice-hockey, american-football, mma)
 - `league_map.py` - Maps league labels to SofaScore filters and Harvest actor league keys; groups leagues into Production vs Experimental
