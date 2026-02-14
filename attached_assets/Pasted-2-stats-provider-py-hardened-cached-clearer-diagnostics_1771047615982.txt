@@ -1,3 +1,14 @@
+2) stats_provider.py (hardened + cached + clearer diagnostics)
+
+Key changes:
+
+Shared Session + retries/backoff for SofaScore calls
+
+In-memory cache per (sport, date) to avoid repeated pulls during one run
+
+Tracks fetch_failures, http_429, http_5xx, etc. so your Diagnostics panel can be more specific
+
+# stats_provider.py
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -71,8 +82,10 @@ def _sleep_backoff(attempt: int, base: float, cap: float) -> None:
     time.sleep(delay + jitter)
 
 
+# Simple per-run cache: (sport, iso_date) -> events list
 _events_cache: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
 
+# Diagnostics counters
 _last_fetch_failures: int = 0
 _last_http_429: int = 0
 _last_http_5xx: int = 0
@@ -159,6 +172,7 @@ def _fetch_events_for_date(
             return []
 
         except Exception as e:
+            # Unexpected parse / other error → treat as failure for that day
             if logger:
                 logger.error(f"SofaScore fetch error for {sport} {d}: {e}")
             _last_fetch_failures += 1

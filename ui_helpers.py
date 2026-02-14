@@ -7,7 +7,7 @@ import pandas as pd
 
 from odds_extract import extract_moneylines, consensus_decimal
 from odds_fetch import get_fetch_errors
-from stats_provider import get_fetch_failure_count
+from stats_provider import get_fetch_failure_count, get_http_429_count, get_http_5xx_count
 from features import elo_win_prob
 from league_map import is_two_outcome
 
@@ -44,10 +44,17 @@ def show_diagnostics(
             for date_str, reason in fetch_errors:
                 st.caption(f"  {date_str}: {reason[:120]}")
         stats_failures = get_fetch_failure_count()
-        if stats_failures:
-            st.warning(
-                f"Stats provider skipped {stats_failures} day(s) due to API errors."
-            )
+        http_429 = get_http_429_count()
+        http_5xx = get_http_5xx_count()
+        if stats_failures or http_429 or http_5xx:
+            parts = []
+            if stats_failures:
+                parts.append(f"{stats_failures} day(s) failed")
+            if http_429:
+                parts.append(f"{http_429} rate-limit (429)")
+            if http_5xx:
+                parts.append(f"{http_5xx} server error (5xx)")
+            st.warning("Stats provider issues: " + ", ".join(parts) + ".")
 
         from config_env import get_env_report
         env_missing, env_stale = get_env_report()
