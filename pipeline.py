@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
-from stats_provider import get_upcoming_games, get_results_history, Game
+from stats_provider import get_upcoming_games, get_results_history, Game, clear_events_cache
 from features import build_elo_ratings, elo_win_prob
 from odds_fetch import fetch_odds_for_window
 from odds_extract import extract_moneylines, consensus_decimal

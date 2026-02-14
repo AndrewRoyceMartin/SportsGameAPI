@@ -90,6 +90,10 @@ def get_http_5xx_count() -> int:
     return _last_http_5xx
 
 
+def clear_events_cache() -> None:
+    _events_cache.clear()
+
+
 def reset_fetch_diagnostics() -> None:
     global _last_fetch_failures, _last_http_429, _last_http_5xx
     _last_fetch_failures = 0

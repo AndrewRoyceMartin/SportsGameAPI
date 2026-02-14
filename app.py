@@ -11,6 +11,7 @@ from league_map import (
     is_separator,
 )
 from league_defaults import DEFAULTS
+from stats_provider import clear_events_cache
 from pipeline import (
     fetch_elo_ratings,
     fetch_harvest_odds,
@@ -197,6 +198,8 @@ def _run_pipeline(
     dedup_per_match=False,
 ):
     progress = st.progress(0, text="Starting pipeline...")
+
+    clear_events_cache()
 
     try:
         progress.progress(10, text="Fetching historical results for Elo ratings...")
