@@ -47,14 +47,6 @@ _LEAGUE_ROUTING = {
     ),
     "Champions League": _LeagueRoute(sport="football", accept=["champions league", "ucl"]),
     "UFC": _LeagueRoute(sport="mma", accept=["ufc"]),
-    "MLB": _LeagueRoute(sport="baseball", accept=["mlb", "major league baseball"]),
-    "ATP Tennis": _LeagueRoute(sport="tennis", accept=["atp"]),
-    "WTA Tennis": _LeagueRoute(sport="tennis", accept=["wta"]),
-    "AFL": _LeagueRoute(sport="aussie-rules", accept=["afl", "australian football"]),
-    "NRL": _LeagueRoute(sport="rugby-league", accept=["nrl", "national rugby league"]),
-    "NBL": _LeagueRoute(sport="basketball", accept=["nbl", "australia"]),
-    "Super Rugby": _LeagueRoute(sport="rugby-union", accept=["super rugby"]),
-    "A-League": _LeagueRoute(sport="football", accept=["a-league", "aleague"]),
 }
 
 

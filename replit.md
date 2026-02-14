@@ -22,8 +22,8 @@ A Streamlit-based sports prediction application that finds value bets by compari
 - `.streamlit/config.toml` - Streamlit server configuration (port 5000)
 
 ## Supported Leagues
-Harvest actor supports: NFL, NBA, NHL, MLB, ATP, WTA, AFL, NRL, NBL, Super-Rugby, A-League, UCL, UFC, College-Football, College-Basketball
-SofaScore provides fixtures/results for all of these via sport-specific endpoints (basketball, ice-hockey, american-football, baseball, tennis, aussie-rules, rugby-league, rugby-union, football, mma).
+Harvest actor supports: NFL, NBA, NHL, UCL, UFC, College-Football, College-Basketball
+SofaScore provides fixtures/results for all of these via sport-specific endpoints (basketball, ice-hockey, american-football, football, mma).
 
 ## Tech Stack
 - Python 3.11
@@ -68,7 +68,7 @@ SofaScore provides fixtures/results for all of these via sport-specific endpoint
 15. 3-outcome leagues: dedup best side per match, require explicit save opt-in, tag as experimental
 
 ## UI Features
-- **Sport filter**: Filter leagues by sport category (All, Basketball, Football, Hockey, etc.)
+- **Sport filter**: Filter leagues by sport category (All, Basketball, Football, Hockey, MMA, Soccer)
 - **Search**: Live text filtering of league names
 - **Run profiles**: Conservative (higher edge, tighter odds), Balanced (league defaults), Aggressive (lower edge, wider odds)
 - **Lock defaults**: Toggle to prevent accidental filter changes
@@ -79,8 +79,8 @@ SofaScore provides fixtures/results for all of these via sport-specific endpoint
 - **Reason-coded empty states**: Specific explanations for why no value bets were found at each pipeline stage
 
 ## Production Safety
-- 2-outcome leagues (NBA, NFL, NHL, MLB, ATP Tennis, WTA Tennis, AFL, NRL, NBL, Super Rugby, College FB/BB): full pipeline, normal save
-- Experimental leagues (Champions League, A-League, UFC): save gated behind checkbox, tagged in DB
+- 2-outcome leagues (NBA, NFL, NHL, College FB/BB): full pipeline, normal save
+- Experimental leagues (Champions League, UFC): save gated behind checkbox, tagged in DB
 - Duplicate pick protection via unique index on (match_date, home_team, away_team, selection, odds_decimal)
 
 ## Required Secrets
