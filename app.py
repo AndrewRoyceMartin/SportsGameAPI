@@ -219,12 +219,13 @@ def render_value_bets(league_label, min_edge, odds_range, top_n, history_days, l
     if st.button("Find Value Bets", type="primary", use_container_width=True):
         _run_pipeline(league_label, harvest_key, sofascore_filter,
                       min_edge, odds_range, top_n, history_days,
+                      lookahead_days=lookahead_days,
                       dedup_per_match=three_outcome)
 
 
 def _run_pipeline(league_label, harvest_key, sofascore_filter,
                   min_edge, odds_range, top_n, history_days,
-                  dedup_per_match=False):
+                  lookahead_days=3, dedup_per_match=False):
     progress = st.progress(0, text="Starting pipeline...")
 
     try:
