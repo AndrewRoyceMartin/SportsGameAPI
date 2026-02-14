@@ -8,6 +8,15 @@ LEAGUE_MAP = {
     "UFC": "UFC",
 }
 
+TWO_OUTCOME_LEAGUES = {
+    "NBA",
+    "NHL",
+    "NFL",
+    "College Football",
+    "College Basketball",
+    "UFC",
+}
+
 
 def sofascore_to_harvest(league_label: str) -> str | None:
     for sofascore_substr, harvest_key in LEAGUE_MAP.items():
@@ -18,3 +27,7 @@ def sofascore_to_harvest(league_label: str) -> str | None:
 
 def available_leagues() -> list[str]:
     return list(LEAGUE_MAP.keys())
+
+
+def is_two_outcome(league_label: str) -> bool:
+    return league_label in TWO_OUTCOME_LEAGUES

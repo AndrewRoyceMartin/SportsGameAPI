@@ -6,7 +6,7 @@ import pandas as pd
 from datetime import date, timedelta
 
 from store import save_picks, get_recent_picks, init_db
-from league_map import LEAGUE_MAP, sofascore_to_harvest, available_leagues
+from league_map import LEAGUE_MAP, sofascore_to_harvest, available_leagues, is_two_outcome
 from stats_provider import get_upcoming_games, get_results_history, Game
 from features import build_elo_ratings, elo_win_prob
 from apify_client import run_actor_get_items
@@ -100,6 +100,17 @@ def _show_harvest_games(harvest_games):
             st.write(f"**{h}** vs **{a}** — {t} — {odds_str}")
 
 
+def _dedup_best_side(value_bets):
+    best = {}
+    for vb in value_bets:
+        key = (vb["home_team"], vb["away_team"])
+        if key not in best or vb["edge"] > best[key]["edge"]:
+            best[key] = vb
+    deduped = list(best.values())
+    deduped.sort(key=lambda x: x["edge"], reverse=True)
+    return deduped
+
+
 def _show_diagnostics(odds_fetched, odds_with_lines, fixtures_fetched=None, matched=None, value_bets=None):
     with st.expander("Pipeline diagnostics", expanded=False):
         cols = st.columns(5)
@@ -129,13 +140,23 @@ def render_value_bets(league_label, min_edge, odds_range, top_n, history_days):
 
     sofascore_filter = SOFASCORE_LEAGUE_FILTERS.get(league_label, league_label)
 
+    three_outcome = not is_two_outcome(league_label)
+    if three_outcome:
+        st.warning(
+            "This league is a 3-outcome market (home / draw / away). "
+            "The current model is 2-outcome Elo, so edges may be overstated. "
+            "Only the best side per match is shown to avoid double-counting."
+        )
+
     if st.button("Find Value Bets", type="primary", use_container_width=True):
         _run_pipeline(league_label, harvest_key, sofascore_filter,
-                      min_edge, odds_range, top_n, history_days)
+                      min_edge, odds_range, top_n, history_days,
+                      dedup_per_match=three_outcome)
 
 
 def _run_pipeline(league_label, harvest_key, sofascore_filter,
-                  min_edge, odds_range, top_n, history_days):
+                  min_edge, odds_range, top_n, history_days,
+                  dedup_per_match=False):
     progress = st.progress(0, text="Starting pipeline...")
 
     try:
@@ -221,6 +242,9 @@ def _run_pipeline(league_label, harvest_key, sofascore_filter,
 
         progress.progress(85, text="Computing value bets...")
         value_bets = _compute_values(matched, elo_ratings, min_edge, odds_range)
+
+        if dedup_per_match and value_bets:
+            value_bets = _dedup_best_side(value_bets)
 
         progress.progress(100, text="Done!")
         progress.empty()
