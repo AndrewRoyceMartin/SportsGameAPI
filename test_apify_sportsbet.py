@@ -11,7 +11,7 @@ if not APIFY_TOKEN:
 if not ACTOR_ID:
     raise RuntimeError("Missing SPORTSBET_ACTOR_ID")
 
-TEST_URL = "https://www.sportsbet.com.au/betting/upcoming-sports/basketball-us"
+TEST_URL = "https://www.sportsbet.com.au/betting/basketball-us/all-basketball-us"
 
 actor_input = {
     "startUrls": [
