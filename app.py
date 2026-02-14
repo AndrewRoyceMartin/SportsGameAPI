@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import os
 import streamlit as st
 from datetime import date, timedelta
 
+from config_env import get_env_report
 from league_map import (
     sofascore_to_harvest,
     available_leagues,
@@ -152,11 +152,11 @@ def _render_value_bets(
     st.subheader("Value Bets")
     st.caption("Compare Elo model predictions against live sportsbook consensus odds")
 
-    has_token = bool(os.getenv("APIFY_TOKEN", ""))
-    if not has_token:
+    missing, stale = get_env_report()
+    if missing:
         st.warning(
-            "Apify API token not found. Add APIFY_TOKEN to your Secrets "
-            "(Tools \u2192 Secrets) to enable live odds fetching."
+            "Missing required secrets: **" + ", ".join(missing) + "**. "
+            "Add them to your Secrets (Tools \u2192 Secrets) to enable live odds fetching."
         )
         return
 

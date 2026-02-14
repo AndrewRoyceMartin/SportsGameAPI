@@ -1,11 +1,13 @@
 # Secrets / config
 .env
+.env.*
 *.env
 config.json
 config*.json
 secrets.*
 *.pem
 *.key
+*.p12
 
 # Databases / outputs
 *.sqlite

@@ -7,6 +7,7 @@ A Streamlit-based sports prediction application that finds value bets by compari
 - `app.py` - Streamlit entry point: page config, sidebar controls, tab layout; delegates to pipeline.py and ui_helpers.py
 - `pipeline.py` - Data pipeline orchestration: fetch odds/fixtures, build Elo, match, compute EV, dedup
 - `ui_helpers.py` - Reusable UI components: diagnostics panel, harvest games display, results explainer, save controls, saved picks table
+- `config_env.py` - Centralized environment audit: required/stale secret checks, startup validation
 - `apify_client.py` - Unified Apify REST client (run actor, get dataset items)
 - `stats_provider.py` - SofaScore API client with Game dataclass, multi-sport support (football, basketball, ice-hockey, american-football, mma)
 - `league_map.py` - Maps league labels to SofaScore filters and Harvest actor league keys; groups leagues into Production vs Experimental
@@ -69,6 +70,7 @@ SofaScore provides fixtures/results for all of these via sport-specific endpoint
 
 ## Required Secrets
 - `APIFY_TOKEN` - Apify API token (used for harvest odds actor)
+- Centralized in `config_env.py`; startup audit surfaces missing/stale secrets in diagnostics
 
 ## UI Tabs
 1. **Value Bets** - League selection, pipeline execution, value bet table with save functionality

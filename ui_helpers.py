@@ -49,6 +49,18 @@ def show_diagnostics(
                 f"Stats provider skipped {stats_failures} day(s) due to API errors."
             )
 
+        from config_env import get_env_report
+        env_missing, env_stale = get_env_report()
+        if not env_missing:
+            st.caption("\u2705 APIFY_TOKEN present")
+        else:
+            st.caption("\u274c Missing: " + ", ".join(env_missing))
+        if env_stale:
+            st.caption(
+                "\u26a0\ufe0f Unused secrets still set: " + ", ".join(env_stale)
+                + " \u2014 consider removing them from Secrets."
+            )
+
 
 def show_harvest_games(harvest_games: List[Dict[str, Any]]) -> None:
     with st.expander("Scheduled games from sportsbooks"):
