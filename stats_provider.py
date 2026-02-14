@@ -48,7 +48,7 @@ _LEAGUE_ROUTING = {
     "Champions League": _LeagueRoute(sport="football", accept=["champions league", "ucl"]),
     "UFC": _LeagueRoute(sport="mma", accept=["ufc"]),
     "AFL": _LeagueRoute(sport="aussie-rules", accept=["afl", "australian football"]),
-    "NRL": _LeagueRoute(sport="rugby-league", accept=["nrl", "national rugby league"]),
+    "NRL": _LeagueRoute(sport="rugby", accept=["nrl", "national rugby league"]),
     "NBL": _LeagueRoute(sport="basketball", accept=["nbl", "australia"]),
 }
 

@@ -69,6 +69,20 @@ def _parse_sportsbet_datetime(event_time: str) -> Optional[datetime]:
     return None
 
 
+def _parse_odds_value(raw: str) -> Optional[float]:
+    try:
+        return float(raw)
+    except (ValueError, TypeError):
+        pass
+    m = re.search(r"(\d+\.\d+)\s*$", raw)
+    if m:
+        try:
+            return float(m.group(1))
+        except (ValueError, TypeError):
+            pass
+    return None
+
+
 def _extract_head_to_head(participants: List[Dict[str, Any]]) -> Optional[tuple]:
     if not participants or len(participants) < 2:
         return None
@@ -81,19 +95,22 @@ def _extract_head_to_head(participants: List[Dict[str, Any]]) -> Optional[tuple]
     home_odds = None
     away_odds = None
 
+    _H2H_LABELS = {
+        "head to head", "h2h", "match winner", "moneyline", "money line",
+        "match betting", "win",
+    }
+
     for p_idx, p in enumerate(participants[:2]):
         for d in p.get("data", []):
             label = (d.get("label") or "").lower()
-            if label in ("head to head", "h2h", "match winner", "moneyline", "money line"):
-                try:
-                    val = float(d.get("value", ""))
-                    if val > 1.0:
-                        if p_idx == 0:
-                            home_odds = val
-                        else:
-                            away_odds = val
-                except (ValueError, TypeError):
-                    pass
+            if label in _H2H_LABELS:
+                raw = str(d.get("value", "")).strip()
+                val = _parse_odds_value(raw)
+                if val is not None and val > 1.0:
+                    if p_idx == 0:
+                        home_odds = val
+                    else:
+                        away_odds = val
 
     if home_odds is None and away_odds is None:
         return None
@@ -154,28 +171,36 @@ def parse_sportsbet_items(
     seen: set = set()
 
     for item in items:
-        comp = (item.get("competition") or "").lower()
-        url = (item.get("url") or "").lower()
-        if target_comp not in comp and target_url not in url:
+        item_url = (item.get("url") or "").lower()
+        if target_url not in item_url:
             continue
 
-        event_time = item.get("eventTime", "")
-        start_utc = _parse_sportsbet_datetime(event_time)
+        results_list = item.get("results", [])
+        if not isinstance(results_list, list):
+            results_list = [item]
 
-        participants = item.get("participants", [])
-        result = _extract_head_to_head(participants)
-        if result is None:
-            continue
+        for row in results_list:
+            comp = (row.get("competition") or "").lower()
+            if comp and target_comp not in comp:
+                continue
 
-        home, away, home_odds, away_odds = result
+            event_time = row.get("eventTime", "")
+            start_utc = _parse_sportsbet_datetime(event_time)
 
-        key = (home, away)
-        if key in seen:
-            continue
-        seen.add(key)
+            participants = row.get("participants", [])
+            result = _extract_head_to_head(participants)
+            if result is None:
+                continue
 
-        event = _to_harvest_format(home, away, home_odds, away_odds, start_utc)
-        harvest_events.append(event)
+            home, away, home_odds, away_odds = result
+
+            key = (home, away)
+            if key in seen:
+                continue
+            seen.add(key)
+
+            event = _to_harvest_format(home, away, home_odds, away_odds, start_utc)
+            harvest_events.append(event)
 
     logger.info(
         "Sportsbet parsed %d events for %s from %d raw items",

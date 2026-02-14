@@ -12,7 +12,7 @@ _last_fetch_errors: List[Tuple[str, str]] = []
 _last_fatal_error: Optional[str] = None
 _last_odds_source: Optional[str] = None
 
-SPORTSBET_ACTOR_ID = "canadesk~sportsbet-scraper"
+SPORTSBET_ACTOR_ID = "lexis-solutions/sportsbet-com-au-scraper"
 
 
 def _build_harvest_input(league_key: str, sportsbook: Optional[str] = None) -> Dict[str, Any]:
@@ -24,7 +24,7 @@ def _build_harvest_input(league_key: str, sportsbook: Optional[str] = None) -> D
 
 def _build_sportsbet_input(league: str) -> Dict[str, Any]:
     config = SPORTSBET_LEAGUES[league]
-    return {"urls": [config["url"]]}
+    return {"startUrls": [{"url": config["url"]}]}
 
 
 def _run_apify(actor_id: str, actor_input: Dict[str, Any], timeout: int) -> Optional[List[Dict[str, Any]]]:

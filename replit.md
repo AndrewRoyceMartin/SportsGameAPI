@@ -24,8 +24,8 @@ A Streamlit-based sports prediction application that finds value bets by compari
 
 ## Supported Leagues
 Harvest actor supports: NFL, NBA, NHL, UCL, UFC, College-Football, College-Basketball
-Sportsbet actor (canadesk~sportsbet-scraper) supports: AFL, NRL, NBL — odds via Head to Head markets
-SofaScore provides fixtures/results via sport-specific endpoints (basketball, ice-hockey, american-football, football, mma, aussie-rules, rugby-league).
+Sportsbet actor (lexis-solutions/sportsbet-com-au-scraper) supports: AFL, NRL, NBL — odds via Match Betting markets
+SofaScore provides fixtures/results via sport-specific endpoints (basketball, ice-hockey, american-football, football, mma, aussie-rules, rugby).
 
 ## Tech Stack
 - Python 3.11
