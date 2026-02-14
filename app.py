@@ -71,6 +71,7 @@ def main():
             "League",
             options=leagues,
             index=default_idx,
+            key=f"league_select_{sport_filter}",
             help="Choose the sport/league to scan. Production leagues are 2-outcome markets. Experimental leagues may overstate edge.",
         )
 
