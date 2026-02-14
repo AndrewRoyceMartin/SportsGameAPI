@@ -61,11 +61,20 @@ def _migrate(conn: sqlite3.Connection) -> None:
         "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_picks_unique'"
     ).fetchall()
     if not idx_rows:
-        conn.execute(
-            "CREATE UNIQUE INDEX IF NOT EXISTS idx_picks_unique "
-            "ON picks(match_date, home_team, away_team, selection, odds_decimal)"
-        )
-        conn.commit()
+        try:
+            conn.execute(
+                "DELETE FROM picks WHERE rowid NOT IN ("
+                "  SELECT MIN(rowid) FROM picks "
+                "  GROUP BY match_date, home_team, away_team, selection, odds_decimal"
+                ")"
+            )
+            conn.execute(
+                "CREATE UNIQUE INDEX idx_picks_unique "
+                "ON picks(match_date, home_team, away_team, selection, odds_decimal)"
+            )
+            conn.commit()
+        except Exception:
+            conn.rollback()
 
 
 def save_picks(picks: List[Dict[str, Any]]) -> int:

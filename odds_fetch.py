@@ -9,6 +9,8 @@ from apify_client import run_actor_get_items
 
 logger = logging.getLogger(__name__)
 
+_last_fetch_errors: List[Tuple[str, str]] = []
+
 
 def fetch_odds_for_window(
     harvest_league: str,
@@ -17,9 +19,11 @@ def fetch_odds_for_window(
     actor_id: str = "harvest~sportsbook-odds-scraper",
     timeout: int = 120,
 ) -> List[Dict[str, Any]]:
+    global _last_fetch_errors
+    _last_fetch_errors = []
+
     all_items: List[Dict[str, Any]] = []
     seen: set = set()
-    skipped: List[Tuple[str, str]] = []
 
     start = datetime.utcnow().date()
     days = max(1, lookahead_days)
@@ -38,8 +42,8 @@ def fetch_odds_for_window(
         except Exception as exc:
             reason = str(exc)
             logger.warning("Odds fetch skipped %s: %s", date_str, reason)
-            skipped.append((date_str, reason))
-            if "429" in reason or "5" == reason[:1]:
+            _last_fetch_errors.append((date_str, reason))
+            if "429" in reason or "500" in reason or "502" in reason or "503" in reason:
                 time.sleep(2)
             continue
 
@@ -56,11 +60,8 @@ def fetch_odds_for_window(
         if i < days - 1:
             time.sleep(0.5)
 
-    if skipped:
-        logger.info("Odds fetch skipped %d day(s): %s", len(skipped), skipped)
-
     return all_items
 
 
 def get_fetch_errors() -> List[Tuple[str, str]]:
-    return []
+    return list(_last_fetch_errors)
