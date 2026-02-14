@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import time
 import logging
-from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 
 from apify_client import run_actor_get_items, ApifyAuthError, ApifyTransientError, ApifyError
@@ -11,6 +9,13 @@ logger = logging.getLogger(__name__)
 
 _last_fetch_errors: List[Tuple[str, str]] = []
 _last_fatal_error: Optional[str] = None
+
+
+def _build_apify_input(league_key: str, sportsbook: Optional[str] = None) -> Dict[str, Any]:
+    payload: Dict[str, Any] = {"league": league_key}
+    if sportsbook:
+        payload["sportsbook"] = sportsbook
+    return payload
 
 
 def fetch_odds_for_window(
@@ -27,38 +32,25 @@ def fetch_odds_for_window(
     all_items: List[Dict[str, Any]] = []
     seen: set = set()
 
-    actor_input: Dict[str, Any] = {
-        "league": harvest_league,
-    }
-    if sportsbook:
-        actor_input["sportsbook"] = sportsbook
+    actor_input = _build_apify_input(harvest_league, sportsbook)
 
     try:
         items = run_actor_get_items(actor_id, actor_input, timeout=timeout)
     except ApifyTransientError as exc:
         reason = str(exc)
         logger.warning("Odds fetch transient error: %s", reason)
-        _last_fetch_errors.append(("all", reason))
+        _last_fetch_errors.append(("apify", reason))
         return []
-    except ApifyAuthError as exc:
+    except (ApifyAuthError, ApifyError) as exc:
         reason = str(exc)
-        logger.error("Odds fetch fatal auth error: %s", reason)
-        _last_fetch_errors.append(("all", reason))
+        logger.error("Odds fetch fatal error: %s", reason)
+        _last_fetch_errors.append(("apify", reason))
         _last_fatal_error = reason
-        return []
-    except ApifyError as exc:
-        reason = str(exc)
-        if "400 Bad Request" in reason:
-            logger.error("Odds fetch fatal 400 error: %s", reason)
-            _last_fatal_error = reason
-        else:
-            logger.warning("Odds fetch error: %s", reason)
-        _last_fetch_errors.append(("all", reason))
         return []
     except Exception as exc:
         reason = str(exc)
         logger.warning("Odds fetch unexpected error: %s", reason)
-        _last_fetch_errors.append(("all", reason))
+        _last_fetch_errors.append(("apify", reason))
         return []
 
     for g in items:

@@ -42,13 +42,13 @@ def show_diagnostics(
         fetch_errors = get_fetch_errors()
         if fatal:
             st.error(
-                f"**Odds fetch aborted** (fatal error, remaining days skipped):\n\n"
+                f"**Odds fetch failed** (fatal config/auth error):\n\n"
                 f"`{fatal[:300]}`"
             )
         elif fetch_errors:
-            st.warning(f"Odds fetch skipped {len(fetch_errors)} day(s) due to errors:")
-            for date_str, reason in fetch_errors:
-                st.caption(f"  {date_str}: {reason[:200]}")
+            st.warning(f"Odds fetch failed ({len(fetch_errors)} error(s)):")
+            for source, reason in fetch_errors:
+                st.caption(f"  {reason[:200]}")
         stats_failures = get_fetch_failure_count()
         http_429 = get_http_429_count()
         http_5xx = get_http_5xx_count()

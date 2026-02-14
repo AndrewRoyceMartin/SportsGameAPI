@@ -1,0 +1,78 @@
+Perfect — that’s the correct fix, and it’s exactly why the failures were 400 (invalid input) rather than transient.
+
+To make sure this stays solid as you add more leagues/sports, do these quick “production-hardening” touches around that change.
+
+1) Lock the Apify input schema in code (prevents regressions)
+
+In odds_fetch.py, build actor input through a single function so nobody reintroduces fields like date later:
+
+def build_apify_input(league_key: str, sportsbook: str | None = None) -> dict:
+    payload = {"league": league_key}
+    if sportsbook:
+        payload["sportsbook"] = sportsbook
+    return payload
+
+
+Then only call Apify using build_apify_input(...).
+
+2) Make 400 a fatal config error (one clear message)
+
+Now that you’ve simplified to one call, treat these as fatal:
+
+ApifyAuthError
+
+ApifyError with 400
+
+And treat only these as retryable:
+
+ApifyTransientError
+
+That keeps the UI clean and avoids “skipped days” style noise.
+
+3) Adjust diagnostics labels (because “lookahead-day odds fetch” no longer exists)
+
+In the diagnostics panel, change wording from day-based to call-based:
+
+Replace: “Odds fetch skipped X day(s) due to errors”
+
+With: “Odds fetch failed (Apify)” + the exception summary
+
+If you still want “lookahead days”, keep it for fixtures only (SofaScore), not odds.
+
+4) Sanity tests (quick manual)
+
+Run these in the UI:
+
+A) NBA (should work end-to-end)
+
+Confirm:
+
+Odds games fetched > 0
+
+With posted lines > 0
+
+Fixtures fetched > 0
+
+Matched > 0
+
+B) Tennis (ATP/WTA) (tests name normalisation)
+
+Confirm matched is reasonable
+
+Use the “Unmatched samples” expander to see if any “Surname, Name” issues remain
+
+C) A league with games far out (tests “lines not posted” path)
+
+Confirm “odds exist but lines not posted yet” triggers correctly.
+
+5) One more important check: league keys
+
+Since the actor returns “all upcoming games for the league”, ensure your league key mapping matches exact actor expected values:
+
+NBA / NFL / NHL / MLB / ATP / WTA / UFC, etc.
+
+If a new AU league doesn’t return odds, it’s usually because the actor doesn’t support that league key — which your UI should surface as:
+
+odds fetched = 0
+
+plus a hint: “league key not supported by odds source”
