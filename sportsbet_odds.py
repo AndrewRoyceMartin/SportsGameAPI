@@ -22,7 +22,7 @@ SPORTSBET_LEAGUES: Dict[str, Dict[str, str]] = {
         "competition": "NRL",
     },
     "NBL": {
-        "url": "https://www.sportsbet.com.au/betting/basketball-aus/nbl",
+        "url": "https://www.sportsbet.com.au/betting/basketball-aus-other/australian-nbl",
         "competition": "NBL",
     },
 }

@@ -12,7 +12,7 @@ _last_fetch_errors: List[Tuple[str, str]] = []
 _last_fatal_error: Optional[str] = None
 _last_odds_source: Optional[str] = None
 
-SPORTSBET_ACTOR_ID = "lexis-solutions/sportsbet-com-au-scraper"
+SPORTSBET_ACTOR_ID = "lexis-solutions~sportsbet-com-au-scraper"
 
 
 def _build_harvest_input(league_key: str, sportsbook: Optional[str] = None) -> Dict[str, Any]:

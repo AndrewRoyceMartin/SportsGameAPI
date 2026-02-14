@@ -24,7 +24,7 @@ A Streamlit-based sports prediction application that finds value bets by compari
 
 ## Supported Leagues
 Harvest actor supports: NFL, NBA, NHL, UCL, UFC, College-Football, College-Basketball
-Sportsbet actor (lexis-solutions/sportsbet-com-au-scraper) supports: AFL, NRL, NBL — odds via Match Betting markets
+Sportsbet actor (lexis-solutions~sportsbet-com-au-scraper) supports: AFL, NRL, NBL — odds via Match Betting markets
 SofaScore provides fixtures/results via sport-specific endpoints (basketball, ice-hockey, american-football, football, mma, aussie-rules, rugby).
 
 ## Tech Stack
