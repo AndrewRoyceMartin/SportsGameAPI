@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timedelta
-from typing import Any, Dict, List, Optional, Tuple
+from datetime import datetime
+from typing import Any, Dict, List, Optional
 
 from thefuzz import fuzz
 
@@ -70,7 +70,12 @@ def _name_score(a: str, b: str) -> int:
 
 
 def _parse_iso(s: str) -> Optional[datetime]:
-    for fmt in ("%Y-%m-%dT%H:%M:%SZ", "%Y-%m-%dT%H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d"):
+    for fmt in (
+        "%Y-%m-%dT%H:%M:%SZ",
+        "%Y-%m-%dT%H:%M:%S",
+        "%Y-%m-%d %H:%M",
+        "%Y-%m-%d",
+    ):
         try:
             return datetime.strptime(s.strip(), fmt)
         except (ValueError, AttributeError):
@@ -117,10 +122,12 @@ def match_games_to_odds(
                 best_odds_game = og
 
         if best_odds_game:
-            matched.append({
-                "fixture": fx,
-                "odds_game": best_odds_game,
-                "match_confidence": best_score,
-            })
+            matched.append(
+                {
+                    "fixture": fx,
+                    "odds_game": best_odds_game,
+                    "match_confidence": best_score,
+                }
+            )
 
     return matched

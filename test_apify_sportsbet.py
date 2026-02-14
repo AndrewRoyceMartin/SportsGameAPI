@@ -13,26 +13,12 @@ if not ACTOR_ID:
 
 TEST_URL = "https://www.sportsbet.com.au/betting/basketball-us/all-basketball-us"
 
-actor_input = {
-    "startUrls": [
-        {"url": TEST_URL}
-    ]
-}
+actor_input = {"startUrls": [{"url": TEST_URL}]}
 
 url = f"https://api.apify.com/v2/acts/{ACTOR_ID}/run-sync-get-dataset-items"
-params = {
-    "token": APIFY_TOKEN,
-    "format": "json",
-    "clean": "true",
-    "limit": 1
-}
+params = {"token": APIFY_TOKEN, "format": "json", "clean": "true", "limit": 1}
 
-response = requests.post(
-    url,
-    params=params,
-    json=actor_input,
-    timeout=600
-)
+response = requests.post(url, params=params, json=actor_input, timeout=600)
 response.raise_for_status()
 
 items = response.json()

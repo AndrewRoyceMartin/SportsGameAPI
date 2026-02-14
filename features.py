@@ -14,7 +14,9 @@ def expected_score(r_home: float, r_away: float) -> float:
     return 1.0 / (1.0 + 10.0 ** ((r_away - r_home) / 400.0))
 
 
-def update_elo(r_home: float, r_away: float, actual_home: float, k: float = 20.0) -> Tuple[float, float]:
+def update_elo(
+    r_home: float, r_away: float, actual_home: float, k: float = 20.0
+) -> Tuple[float, float]:
     exp_home = expected_score(r_home, r_away)
     r_home_new = r_home + k * (actual_home - exp_home)
     r_away_new = r_away + k * ((1.0 - actual_home) - (1.0 - exp_home))

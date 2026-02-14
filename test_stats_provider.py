@@ -2,6 +2,7 @@
 
 Run: python test_stats_provider.py
 """
+
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -16,7 +17,9 @@ def main():
         assert g.status == "completed"
         assert g.home_score is not None
         assert g.away_score is not None
-        print(f"  {g.start_time_utc:%Y-%m-%d %H:%M} | {g.home} {g.home_score}-{g.away_score} {g.away} | {g.league}")
+        print(
+            f"  {g.start_time_utc:%Y-%m-%d %H:%M} | {g.home} {g.home_score}-{g.away_score} {g.away} | {g.league}"
+        )
 
     print()
     print("=== Testing get_upcoming_games (EPL, next 14 days) ===")
@@ -30,7 +33,9 @@ def main():
         assert g.status == "upcoming"
         assert g.home_score is None
         assert g.away_score is None
-        print(f"  {g.start_time_utc:%Y-%m-%d %H:%M} | {g.home} vs {g.away} | {g.league}")
+        print(
+            f"  {g.start_time_utc:%Y-%m-%d %H:%M} | {g.home} vs {g.away} | {g.league}"
+        )
 
     print()
     print("All assertions passed.")

@@ -3,8 +3,7 @@ from __future__ import annotations
 import sqlite3
 import json
 import os
-from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 DB_PATH = os.getenv("PICKS_DB_PATH", "picks.db")
 
@@ -106,15 +105,31 @@ def save_picks(picks: List[Dict[str, Any]]) -> int:
                 p.get("home_elo"),
                 p.get("away_elo"),
                 p.get("is_experimental", 0),
-                json.dumps({
-                    k: v for k, v in p.items()
-                    if k not in (
-                        "date", "time", "home_team", "away_team", "league",
-                        "country", "market", "selection", "odds_decimal",
-                        "implied_prob", "model_prob", "edge", "ev_per_unit",
-                        "home_elo", "away_elo", "is_experimental",
-                    )
-                }),
+                json.dumps(
+                    {
+                        k: v
+                        for k, v in p.items()
+                        if k
+                        not in (
+                            "date",
+                            "time",
+                            "home_team",
+                            "away_team",
+                            "league",
+                            "country",
+                            "market",
+                            "selection",
+                            "odds_decimal",
+                            "implied_prob",
+                            "model_prob",
+                            "edge",
+                            "ev_per_unit",
+                            "home_elo",
+                            "away_elo",
+                            "is_experimental",
+                        )
+                    }
+                ),
             ),
         )
         if conn.total_changes > before:

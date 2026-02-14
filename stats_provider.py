@@ -69,14 +69,26 @@ def _parse_game(ev: Dict[str, Any]) -> Optional[Game]:
             league = f"{league} ({country})"
 
         status_obj = ev.get("status", {})
-        status_type = (status_obj.get("type", "") if isinstance(status_obj, dict) else str(status_obj)).lower()
+        status_type = (
+            status_obj.get("type", "")
+            if isinstance(status_obj, dict)
+            else str(status_obj)
+        ).lower()
 
         if status_type == "finished":
             status = "completed"
             home_score_obj = ev.get("homeScore", {})
             away_score_obj = ev.get("awayScore", {})
-            hs = home_score_obj.get("current") if isinstance(home_score_obj, dict) else None
-            aws = away_score_obj.get("current") if isinstance(away_score_obj, dict) else None
+            hs = (
+                home_score_obj.get("current")
+                if isinstance(home_score_obj, dict)
+                else None
+            )
+            aws = (
+                away_score_obj.get("current")
+                if isinstance(away_score_obj, dict)
+                else None
+            )
             home_score = int(hs) if hs is not None else None
             away_score = int(aws) if aws is not None else None
         else:
