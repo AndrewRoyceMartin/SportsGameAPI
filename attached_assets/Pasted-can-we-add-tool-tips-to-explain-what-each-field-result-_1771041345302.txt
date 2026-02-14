@@ -1,0 +1,100 @@
+can we add tool tips - to explain what each field result means and to explain what all filters mean in plain english.
+
+Yes — and it’s a high-value change because it prevents misuse.
+
+Here’s the clean, Streamlit-native way to do it without cluttering the UI:
+
+Step T1: Add tooltips to sidebar filters
+
+Streamlit supports tooltips via the help= parameter on most widgets.
+
+Example pattern
+min_edge = st.slider(
+    "Min Edge %",
+    0.0, 0.20, 0.03,
+    help="Minimum difference between the model probability and the market-implied probability. Higher = fewer picks."
+)
+
+Suggested plain-English tooltips (copy/paste)
+
+League
+
+help: "Choose the sport/league to scan. Production leagues are 2-outcome markets. Experimental leagues may overstate edge (e.g., soccer draw risk)."
+
+Min Edge %
+
+help: "Only show bets where the model's win probability is at least this much higher than the market-implied probability. Example: 5% means model 55% vs market 50%."
+
+Odds Range
+
+help: "Only consider bets with decimal odds inside this range. Lower odds = favourites; higher odds = underdogs. Narrowing this can reduce volatility."
+
+Max Results / Top N
+
+help: "Show at most this many top-ranked bets after filtering. Ranked by expected value (EV/unit)."
+
+Elo History (days)
+
+help: "How far back to build team ratings from past results. Longer = more stable; shorter = more responsive to recent form."
+
+Lookahead (days) (if you have it)
+
+help: "How many days ahead to search for upcoming fixtures and odds. If odds aren't posted yet, try a shorter window or a date closer to game time."
+
+Step T2: Add tooltips / explanations for result columns
+
+Tables don’t have per-column hover tooltips, so the best UX is:
+
+A “What do these columns mean?” expander above the table
+
+Inside, use plain English bullet points
+
+Drop-in expander block
+with st.expander("What do these results mean?"):
+    st.markdown(
+        """
+**Match / Date / Time**: The event and scheduled start time (UTC).
+
+**Pick**: The side the model rates as the best value (highest EV) for this match.
+
+**Odds**: Consensus decimal odds from the books (median across sportsbooks).
+
+**Model %**: The model's estimated chance this pick wins.
+
+**Implied %**: The market's implied chance from the odds (≈ 1 / odds).
+
+**Edge**: Model % − Implied %. Positive edge means the model thinks the market underprices this outcome.
+
+**EV/unit**: Expected profit per 1 unit staked (EV = ModelProb × Odds − 1).  
+Example: EV/unit = 0.10 means +0.10 units expected return per 1 unit bet (before commissions/limits).
+
+**Elo H / Elo A**: The model strength ratings for the two teams/participants used to generate Model %.
+        """
+    )
+
+Step T3: Add tooltips to diagnostics panel
+
+If you’re showing metrics like:
+
+Odds games fetched
+
+With posted lines
+
+Fixtures fetched
+
+Matched
+
+Value bets
+
+Add a short “info” expander:
+
+with st.expander("How to read diagnostics"):
+    st.markdown(
+        """
+- **Odds games fetched**: How many events the odds source returned.
+- **With posted lines**: How many events have actual moneyline prices available (not blank).
+- **Fixtures fetched**: How many upcoming events were found in the stats source.
+- **Matched**: How many fixtures were paired to odds successfully.
+- **Value bets**: How many picks passed your filters.
+        """
+    )

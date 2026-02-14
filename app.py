@@ -47,7 +47,10 @@ def main():
 
         leagues = available_leagues()
         default_idx = leagues.index("NBA") if "NBA" in leagues else 0
-        league_label = st.selectbox("League", options=leagues, index=default_idx)
+        league_label = st.selectbox(
+            "League", options=leagues, index=default_idx,
+            help="Choose the sport/league to scan. Production leagues are 2-outcome markets. Experimental leagues may overstate edge (e.g., soccer draw risk).",
+        )
 
         if is_separator(league_label):
             st.warning("Please select a league above or below the separator.")
@@ -81,17 +84,32 @@ def main():
             st.session_state["lookahead_days"] = d_fb.get("lookahead_days", 3)
 
         st.subheader("Value Filters")
-        min_edge_pct = st.slider("Min Edge %", 1, 30, step=1, key="min_edge")
+        min_edge_pct = st.slider(
+            "Min Edge %", 1, 30, step=1, key="min_edge",
+            help="Only show bets where the model's win probability is at least this much higher than the market-implied probability. Example: 5% means model says 55% vs market 50%.",
+        )
         min_edge_val = min_edge_pct / 100.0
-        odds_range = st.slider("Odds Range", 1.10, 10.0, step=0.05, key="odds_range")
+        odds_range = st.slider(
+            "Odds Range", 1.10, 10.0, step=0.05, key="odds_range",
+            help="Only consider bets with decimal odds inside this range. Lower odds = favourites; higher odds = underdogs. Narrowing this can reduce volatility.",
+        )
         top_n_options = [5, 10, 15, 20, 25]
         top_n_val = st.session_state["top_n"]
         top_n_idx = top_n_options.index(top_n_val) if top_n_val in top_n_options else 1
-        top_n = st.selectbox("Max Results", options=top_n_options, index=top_n_idx)
+        top_n = st.selectbox(
+            "Max Results", options=top_n_options, index=top_n_idx,
+            help="Show at most this many top-ranked bets after filtering. Ranked by expected value (EV/unit).",
+        )
 
         st.subheader("History Window")
-        history_days = st.slider("Elo History (days)", 30, 365, step=10, key="history_days")
-        lookahead_days = st.slider("Lookahead (days)", 1, 14, step=1, key="lookahead_days")
+        history_days = st.slider(
+            "Elo History (days)", 30, 365, step=10, key="history_days",
+            help="How far back to build team ratings from past results. Longer = more stable; shorter = more responsive to recent form.",
+        )
+        lookahead_days = st.slider(
+            "Lookahead (days)", 1, 14, step=1, key="lookahead_days",
+            help="How many days ahead to search for upcoming fixtures and odds. If odds aren't posted yet, try a shorter window or wait until closer to game time.",
+        )
 
         if st.button("Reset filters to league defaults"):
             _apply_defaults(league_label)
@@ -161,6 +179,13 @@ def _show_diagnostics(odds_fetched, odds_with_lines, fixtures_fetched=None, matc
         cols[2].metric("Fixtures fetched", fixtures_fetched if fixtures_fetched is not None else "—")
         cols[3].metric("Matched", matched if matched is not None else "—")
         cols[4].metric("Value bets", value_bets if value_bets is not None else "—")
+        st.caption(
+            "**Odds games fetched** = events returned by the odds source. "
+            "**With posted lines** = events with actual moneyline prices (not blank). "
+            "**Fixtures fetched** = upcoming events from the stats source. "
+            "**Matched** = fixtures paired to odds successfully. "
+            "**Value bets** = picks that passed your filters."
+        )
 
 
 def render_value_bets(league_label, min_edge, odds_range, top_n, history_days, lookahead_days=3):
@@ -376,6 +401,19 @@ def _compute_values(matched, elo_ratings, min_edge, odds_range):
 
 def _display_value_bets(value_bets, league_label):
     st.success(f"Found {len(value_bets)} value bet(s) for {league_label}")
+
+    with st.expander("What do these results mean?"):
+        st.markdown(
+            "**Match / Date / Time**: The event and scheduled start time (UTC).\n\n"
+            "**Pick**: The side the model rates as the best value (highest EV) for this match.\n\n"
+            "**Odds**: Consensus decimal odds from the books (median across sportsbooks).\n\n"
+            "**Model %**: The model's estimated chance this pick wins.\n\n"
+            "**Implied %**: The market's implied chance from the odds (\u2248 1 / odds).\n\n"
+            "**Edge**: Model % \u2212 Implied %. Positive edge means the model thinks the market underprices this outcome.\n\n"
+            "**EV/unit**: Expected profit per 1 unit staked (EV = ModelProb \u00d7 Odds \u2212 1). "
+            "Example: EV/unit = 0.10 means +0.10 units expected return per 1 unit bet (before commissions/limits).\n\n"
+            "**Elo H / Elo A**: The model strength ratings for the two teams/participants used to generate Model %."
+        )
 
     experimental = not is_two_outcome(league_label)
 
