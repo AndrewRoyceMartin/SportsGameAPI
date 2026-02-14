@@ -64,6 +64,40 @@ def main():
         render_saved_picks()
 
 
+def _count_games_with_odds(harvest_games):
+    count = 0
+    for g in harvest_games:
+        snaps = extract_moneylines(g)
+        if snaps:
+            count += 1
+    return count
+
+
+def _latest_harvest_date(harvest_games):
+    from mapper import _parse_iso
+    latest = None
+    for g in harvest_games:
+        dt = _parse_iso(g.get("scheduledTime", ""))
+        if dt:
+            d = dt.date()
+            if latest is None or d > latest:
+                latest = d
+    return latest
+
+
+def _show_harvest_games(harvest_games):
+    with st.expander("Scheduled games from sportsbooks"):
+        for g in harvest_games:
+            h = g.get("homeTeam", {}).get("mediumName", "?")
+            a = g.get("awayTeam", {}).get("mediumName", "?")
+            t = g.get("scheduledTime", "?")
+            snaps = extract_moneylines(g)
+            home_odds = consensus_decimal(snaps, "home")
+            away_odds = consensus_decimal(snaps, "away")
+            odds_str = f"H={home_odds:.2f} / A={away_odds:.2f}" if home_odds and away_odds else "No odds posted"
+            st.write(f"**{h}** vs **{a}** — {t} — {odds_str}")
+
+
 def render_value_bets(league_label, min_edge, odds_range, top_n, history_days):
     st.subheader("Value Bets")
     st.caption("Compare Elo model predictions against live sportsbook consensus odds")
@@ -102,14 +136,7 @@ def _run_pipeline(league_label, harvest_key, sofascore_filter,
         elo_dicts = [_game_to_elo_dict(g) for g in results]
         elo_ratings = build_elo_ratings(elo_dicts) if elo_dicts else {}
 
-        progress.progress(35, text="Fetching upcoming fixtures...")
-        upcoming = get_upcoming_games(league=sofascore_filter, date_to=date.today() + timedelta(days=14))
-        if not upcoming:
-            st.info(f"No upcoming fixtures found for {league_label} in the next 14 days.")
-            progress.empty()
-            return
-
-        progress.progress(50, text=f"Fetching live odds from sportsbooks ({harvest_key})...")
+        progress.progress(40, text=f"Fetching live odds from sportsbooks ({harvest_key})...")
         try:
             harvest_games = run_actor_get_items(
                 actor_id="harvest~sportsbook-odds-scraper",
@@ -126,14 +153,35 @@ def _run_pipeline(league_label, harvest_key, sofascore_filter,
             progress.empty()
             return
 
-        progress.progress(70, text=f"Matching {len(upcoming)} fixtures to {len(harvest_games)} odds events...")
+        games_with_odds = _count_games_with_odds(harvest_games)
+        if games_with_odds == 0:
+            st.warning(
+                f"Found {len(harvest_games)} {league_label} game(s) but sportsbooks "
+                f"haven't posted odds yet. Lines typically appear 1-2 days before game time."
+            )
+            _show_harvest_games(harvest_games)
+            progress.empty()
+            return
+
+        latest_game_date = _latest_harvest_date(harvest_games)
+        fixture_end = max(date.today() + timedelta(days=14), latest_game_date) if latest_game_date else date.today() + timedelta(days=14)
+
+        progress.progress(55, text="Fetching upcoming fixtures...")
+        upcoming = get_upcoming_games(league=sofascore_filter, date_to=fixture_end)
+        if not upcoming:
+            st.info(f"No upcoming fixtures found for {league_label} through {fixture_end}.")
+            progress.empty()
+            return
+
+        progress.progress(70, text=f"Matching {len(upcoming)} fixtures to {games_with_odds} odds events...")
         matched = match_games_to_odds(upcoming, harvest_games)
 
         if not matched:
             st.warning(
-                f"Could not match any fixtures to odds events. "
-                f"This may happen if team names differ significantly between sources."
+                f"Could not match any of {len(upcoming)} fixtures to "
+                f"{len(harvest_games)} odds events. Team names may differ between sources."
             )
+            _show_harvest_games(harvest_games)
             progress.empty()
             return
 
