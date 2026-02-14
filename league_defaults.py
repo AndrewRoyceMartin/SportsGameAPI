@@ -74,7 +74,7 @@ DEFAULTS = {
         "min_odds": 1.30,
         "max_odds": 4.50,
         "history_days": 120,
-        "lookahead_days": 7,
+        "lookahead_days": 21,
         "top_n": 15,
     },
     "NRL": {
@@ -82,7 +82,7 @@ DEFAULTS = {
         "min_odds": 1.30,
         "max_odds": 4.50,
         "history_days": 120,
-        "lookahead_days": 7,
+        "lookahead_days": 21,
         "top_n": 15,
     },
     "NBL": {
@@ -90,7 +90,7 @@ DEFAULTS = {
         "min_odds": 1.30,
         "max_odds": 4.00,
         "history_days": 120,
-        "lookahead_days": 7,
+        "lookahead_days": 14,
         "top_n": 15,
     },
     "Champions League": {
