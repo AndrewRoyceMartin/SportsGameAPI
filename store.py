@@ -57,14 +57,25 @@ def _migrate(conn: sqlite3.Connection) -> None:
         conn.execute("ALTER TABLE picks ADD COLUMN is_experimental INTEGER DEFAULT 0")
         conn.commit()
 
+    idx_rows = conn.execute(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_picks_unique'"
+    ).fetchall()
+    if not idx_rows:
+        conn.execute(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_picks_unique "
+            "ON picks(match_date, home_team, away_team, selection, odds_decimal)"
+        )
+        conn.commit()
+
 
 def save_picks(picks: List[Dict[str, Any]]) -> int:
     init_db()
     conn = _connect()
     inserted = 0
     for p in picks:
+        before = conn.total_changes
         conn.execute(
-            """INSERT INTO picks
+            """INSERT OR IGNORE INTO picks
                (match_date, match_time, home_team, away_team, league, country,
                 market, selection, odds_decimal, implied_prob, model_prob,
                 edge, ev_per_unit, home_elo, away_elo, is_experimental, meta)
@@ -97,7 +108,8 @@ def save_picks(picks: List[Dict[str, Any]]) -> int:
                 }),
             ),
         )
-        inserted += 1
+        if conn.total_changes > before:
+            inserted += 1
     conn.commit()
     conn.close()
     return inserted

@@ -1,0 +1,116 @@
+Yes — I can see your GitHub repo, and I can also see why you’re getting “Replit vs GitHub” drift.
+
+Right now, the GitHub version is internally inconsistent (some new pipeline files exist, but several key functions/modules don’t line up). Example: app.py imports match_games_to_odds from mapper, but the mapper.py in GitHub contains match_fixtures_to_odds(...) instead (different name/signature).
+Also, stats_provider.py in GitHub only calls SofaScore’s football endpoint, so NBA/NHL/NFL/UFC won’t be real fixtures even if the UI lets you select them.
+
+Below is a full review of what I can verify in GitHub as it exists right now, plus what to delete and what to fix.
+
+Security issues you should address immediately
+1) FIXED
+
+2) Apify token handling is mostly OK, but one improvement needed
+
+Your apify_client.py reads APIFY_TOKEN into a module global at import time, not at call time: APIFY_TOKEN = os.getenv("APIFY_TOKEN").
+That means if the secret changes during runtime (or during certain reload scenarios), it may not be picked up. Fix: move os.getenv inside run_actor_get_items().
+
+3) Secrets in source control
+
+I didn’t see APIFY tokens committed in code from what I could load (good), but you should still run these checks locally:
+
+git grep -n "ghp_" .
+git grep -n "APIFY_TOKEN" .
+git grep -n "SPORTS_API_KEY" .
+
+
+If anything sensitive appears in tracked files, we purge it + rotate it.
+
+Coding and architecture problems in the GitHub repo
+1) GitHub won’t run as-is (function/name mismatches)
+
+app.py imports match_games_to_odds from mapper
+
+GitHub mapper.py does not define that; it defines match_fixtures_to_odds and its inputs are plain dict fixtures/odds events, not your current Game dataclass fixtures.
+
+Fix: either:
+
+Rename/restore the correct function in mapper.py to match what app.py expects, or
+
+Update app.py to call the actual function and pass the correct data structures.
+
+2) stats_provider.py only supports football right now
+
+It hardcodes:
+/sport/football/scheduled-events/{date}
+
+But your UI supports NBA/NHL/NFL/UFC etc.
+So GitHub will show misleading results or none at all for non-football leagues.
+
+Fix: implement sport routing (football/basketball/ice-hockey/american-football/mma) as you described in Replit.
+
+3) League mapping is implemented, but formatting is “one-line everything”
+
+league_map.py, league_defaults.py are currently written as one long line in GitHub.
+It works, but it’s hard to maintain and diff-review. Reformat with Black.
+
+4) Odds fetching looks good, but you should cap requests and add basic backoff
+
+fetch_odds_for_window() loops days and silently continues on any exception.
+That’s OK for resilience, but debugging becomes painful. Better:
+
+collect skipped days/errors into a list for the diagnostics panel
+
+add a short sleep/backoff on 429/5xx
+
+5) Database layer is OK but missing uniqueness protection
+
+store.py inserts picks with no de-duplication or unique constraints; running the pipeline repeatedly can spam duplicates.
+Add a unique key such as (match_date, home_team, away_team, selection, odds_decimal) or compute a pick_hash.
+
+Files that can likely be deleted (or moved to /legacy)
+
+These are in GitHub and appear not used by the new Apify+SofaScore pipeline:
+
+api_client.py (AllSportsAPI client)
+Your new direction is to remove AllSportsAPI. This file is legacy.
+
+Any older Apify runner / Sportsbet-specific modules (if present in your repo but unused now)
+I couldn’t confirm them from GitHub listing (GitHub UI wasn’t showing your full tree reliably), but if you still have things like:
+
+apify_runner.py
+
+sportsbet_odds.py
+
+old “AllSportsAPI” UI tabs/pages/modules
+
+…they should be removed or moved into /legacy/ so the active codebase is clean.
+
+Test scripts
+
+test_apify_odds.py is useful, but should live under /tests and avoid re-implementing the Apify request when apify_client.py exists.
+
+The biggest issue: GitHub ≠ Replit (you need to sync the working version)
+
+Based on what I can see, GitHub contains a partial set of the “Replit working” changes, but not all. That’s why review is showing breakages.
+
+Do this to make GitHub match your current Replit workspace:
+
+git status
+git add -A
+git commit -m "Sync Replit working pipeline (Apify + SofaScore + UI diagnostics)"
+git push origin main
+
+
+Then I’ll re-review once GitHub reflects the exact working tree.
+
+Concrete next steps (safe + clean)
+
+
+Patch apify_client.py to read APIFY_TOKEN inside the function.
+
+Sync Replit → GitHub so the repo actually matches what you’re running.
+
+Delete api_client.py (AllSportsAPI legacy) after confirming nothing imports it.
+
+Fix the mapper function name mismatch so app.py runs cleanly.
+
+Upgrade stats_provider.py to multi-sport routing (it’s currently football-only).
