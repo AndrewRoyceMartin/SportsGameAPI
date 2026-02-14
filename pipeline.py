@@ -70,9 +70,9 @@ def fetch_fixtures(
 
 
 def match_fixtures_to_odds(
-    upcoming: List[Game], harvest_games: List[Dict[str, Any]]
+    upcoming: List[Game], harvest_games: List[Dict[str, Any]], league: str = ""
 ) -> List[Dict[str, Any]]:
-    return match_games_to_odds(upcoming, harvest_games)
+    return match_games_to_odds(upcoming, harvest_games, league=league)
 
 
 def get_unmatched(

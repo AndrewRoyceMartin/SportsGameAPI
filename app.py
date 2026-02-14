@@ -327,7 +327,7 @@ def _run_pipeline(
             70,
             text=f"Matching {len(upcoming)} fixtures to {games_with_odds} odds events...",
         )
-        matched = match_fixtures_to_odds(upcoming, harvest_games)
+        matched = match_fixtures_to_odds(upcoming, harvest_games, league=league_label)
 
         if not matched:
             progress.empty()

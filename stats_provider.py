@@ -239,11 +239,14 @@ def _parse_game(ev: Dict[str, Any]) -> Optional[Game]:
         start_time = datetime.utcfromtimestamp(ts)
 
         tournament = ev.get("tournament", {})
-        league = tournament.get("name", "Unknown")
+        unique = tournament.get("uniqueTournament", {})
+        tournament_name = tournament.get("name", "Unknown")
+        tournament_slug = tournament.get("slug", "")
+        unique_name = unique.get("name", "")
+        unique_slug = unique.get("slug", "")
         category = tournament.get("category", {})
         country = category.get("name", "")
-        if country:
-            league = f"{league} ({country})"
+        league = f"{tournament_name} {tournament_slug} {unique_name} {unique_slug} ({country})".strip()
 
         league_lower = league.lower()
         if any(deny in league_lower for deny in _TOURNAMENT_DENY):

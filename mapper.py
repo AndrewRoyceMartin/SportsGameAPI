@@ -10,6 +10,12 @@ TIME_WINDOW_HOURS = 4
 FUZZY_THRESHOLD = 60
 NAME_ONLY_THRESHOLD = 75
 
+_AU_TIME_WINDOW_HOURS = 6
+_AU_FUZZY_THRESHOLD = 55
+_AU_NAME_ONLY_THRESHOLD = 70
+
+_AU_LEAGUES = {"AFL", "NRL", "NBL"}
+
 _ALIASES = {
     "psg": "paris saint germain",
     "man city": "manchester city",
@@ -32,6 +38,7 @@ _ALIASES = {
     "leverkusen": "bayer leverkusen",
     "gws": "greater western sydney giants",
     "gws giants": "greater western sydney giants",
+    "greater western sydney": "greater western sydney giants",
     "brisbane lions": "brisbane lions",
     "west coast": "west coast eagles",
     "north melbourne": "north melbourne kangaroos",
@@ -54,6 +61,7 @@ _ALIASES = {
     "swans": "sydney swans",
     "dockers": "fremantle dockers",
     "fremantle": "fremantle dockers",
+    "gold coast": "gold coast suns",
     "suns": "gold coast suns",
     "saints": "st kilda saints",
     "st kilda": "st kilda saints",
@@ -94,15 +102,17 @@ _ALIASES = {
 }
 
 
+_STRIP_SUFFIXES = re.compile(
+    r"\b(fc|afc|sc|cf|the)\b", re.IGNORECASE
+)
+
+
 def _normalise(name: str) -> str:
     name = name.lower().strip()
     if "," in name:
         parts = [p.strip() for p in name.split(",", 1)]
         name = f"{parts[1]} {parts[0]}"
-    name = re.sub(r"\bfc\b", "", name)
-    name = re.sub(r"\bafc\b", "", name)
-    name = re.sub(r"\bsc\b", "", name)
-    name = re.sub(r"\bcf\b", "", name)
+    name = _STRIP_SUFFIXES.sub("", name)
     name = re.sub(r"\bunited\b", "utd", name)
     name = re.sub(r"\bjr\.?\b", "jr", name)
     name = re.sub(r"\bsr\.?\b", "sr", name)
@@ -157,7 +167,13 @@ def match_games_to_odds(
     harvest_games: List[Dict[str, Any]],
     time_window_hours: float = TIME_WINDOW_HOURS,
     fuzzy_threshold: int = FUZZY_THRESHOLD,
+    league: str = "",
 ) -> List[Dict[str, Any]]:
+    is_au = league in _AU_LEAGUES
+    tw = _AU_TIME_WINDOW_HOURS if is_au else time_window_hours
+    ft = _AU_FUZZY_THRESHOLD if is_au else fuzzy_threshold
+    no_time_ft = _AU_NAME_ONLY_THRESHOLD if is_au else NAME_ONLY_THRESHOLD
+
     matched: List[Dict[str, Any]] = []
 
     for fx in fixtures:
@@ -177,7 +193,7 @@ def match_games_to_odds(
             both_have_time = fx_dt is not None and og_dt is not None
             if both_have_time:
                 diff = abs((fx_dt - og_dt).total_seconds())
-                if diff > time_window_hours * 3600:
+                if diff > tw * 3600:
                     continue
 
             home_sc = _name_score(fx_home, og_home)
@@ -190,7 +206,7 @@ def match_games_to_odds(
 
             avg_score = max(avg_normal, avg_flipped)
 
-            threshold = fuzzy_threshold if both_have_time else NAME_ONLY_THRESHOLD
+            threshold = ft if both_have_time else no_time_ft
 
             if avg_score >= threshold and avg_score > best_score:
                 best_score = avg_score

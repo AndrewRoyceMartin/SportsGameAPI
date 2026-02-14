@@ -1,0 +1,141 @@
+now we’re at the real AU integration problem:
+
+✅ Sportsbet odds events are AFL Round 1-type fixtures (Sydney v Carlton etc.)
+⚠️ SofaScore is only returning 1 “AFL” fixture, and its team strings (or competition filtering) don’t line up with Sportsbet → 0 matches
+
+So we fix this in two passes:
+
+Make SofaScore return the same set of AFL fixtures (not just 1)
+
+Normalise names so Sportsbet ⇄ SofaScore match
+
+1) Fix the stats side first (why only 1 fixture?)
+
+If you’re scraping scheduled-events for aussie-rules across the date range, you should see multiple AFL games for those dates. If you’re getting only 1, it’s almost always one of these:
+
+A) Wrong SofaScore sport slug for AFL
+
+Your code currently defaults to football if not found, but you need the right slug for Aussie Rules.
+
+Try these in your browser for the day your odds show:
+
+For Sydney v Carlton (Sportsbet shows 2026-03-04T21:30:00Z which is Thu 5 Mar 08:30 AEDT)
+So check 2026-03-05:
+
+Option 1
+https://api.sofascore.com/api/v1/sport/aussie-rules/scheduled-events/2026-03-05
+
+Option 2
+https://api.sofascore.com/api/v1/sport/afl/scheduled-events/2026-03-05
+
+Option 3
+https://api.sofascore.com/api/v1/sport/australian-football/scheduled-events/2026-03-05
+
+One of these will return AFL events. Use the one that works.
+
+B) Your accept=["afl"] filter is too strict / wrong field
+
+SofaScore tournament strings may not literally contain “afl” (could be “AFL”, “Australian Football League”, “AFL Women”, “Pre-season”, etc.).
+
+Right now _matches_league(game.league, accept) checks only game.league which you set to:
+"{tournament.name} ({country})"
+
+That can miss obvious identifiers in uniqueTournament.name or uniqueTournament.slug.
+
+Better filter: check tournament slug/name too.
+
+2) Fix matching (the odds strings are AFL team names)
+
+Your Sportsbet team names include:
+
+Gold Coast SUNS
+
+GWS GIANTS
+
+St Kilda
+
+SofaScore often uses:
+
+Gold Coast Suns
+
+GWS Giants or Greater Western Sydney Giants
+
+St Kilda Saints
+
+So even if “similar”, fuzzy matching can fail if your normalisation doesn’t:
+
+strip “FC”, “Saints”, “Suns” case variants
+
+standardise “GWS”
+
+standardise punctuation/spacing
+
+The exact fixes to implement
+Fix A — Improve AFL routing + filtering in stats_provider.py
+1) Add correct sport slug
+
+Once you confirm which endpoint works, set:
+
+_LEAGUE_ROUTING["AFL"] = _LeagueRoute(
+    sport="aussie-rules",  # or whatever worked in your test
+    accept=["afl", "australian football league"],
+)
+
+2) Filter on tournament fields, not just game.league
+
+Modify _parse_game to store more fields (minimal change):
+
+tournament = ev.get("tournament", {})
+unique = tournament.get("uniqueTournament", {})
+
+tournament_name = tournament.get("name", "Unknown")
+tournament_slug = tournament.get("slug", "")
+unique_name = unique.get("name", "")
+unique_slug = unique.get("slug", "")
+
+
+Then set Game.league to something richer (or add new fields).
+Cheapest: append slugs into league so your existing accept check works:
+
+league = f"{tournament_name} {tournament_slug} {unique_name} {unique_slug} ({country})"
+
+
+Now accept patterns like "afl" will hit reliably.
+
+Fix B — Add AFL alias + normalisation rules in mapper.py
+
+Add a small AFL alias map:
+
+AFL_ALIASES = {
+  "gws giants": "greater western sydney giants",
+  "gold coast suns": "gold coast suns",
+  "st kilda": "st kilda saints",
+  # add as needed
+}
+
+
+And in your team normaliser:
+
+lowercase
+
+remove punctuation
+
+collapse whitespace
+
+convert “suns” case variants
+
+expand “gws”
+
+Example normalisation rule (conceptual):
+
+replace gws → greater western sydney
+
+if team == st kilda → st kilda saints
+
+strip fc, the, etc.
+
+Fix C — Match by date tolerance + teams (AFL needs timezone awareness)
+
+Your odds timestamps are in UTC already. SofaScore uses UTC startTimestamp too. Good.
+
+Set AFL match tolerance to something like ±6 hours to cover minor parsing drift, but with strict team similarity.
