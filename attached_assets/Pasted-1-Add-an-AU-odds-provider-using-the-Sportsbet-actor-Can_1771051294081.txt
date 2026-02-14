@@ -1,0 +1,144 @@
+1) Add an AU odds provider using the Sportsbet actor
+Canonical output you must produce (same as Harvest)
+
+Your sportsbet fetcher should return the same “odds event” structure your mapper already understands:
+
+start_time_utc
+
+home, away
+
+book = "Sportsbet"
+
+league = "AFL" / "NRL" / "NBL"
+
+moneyline_decimal_home, moneyline_decimal_away
+
+Then everything downstream stays unchanged (dedupe → match → EV math → UI).
+
+2) Parse Sportsbet AFL + NRL from what you already have
+AFL rows (best quality)
+
+Shape:
+
+{
+  "eventTime": "Thursday, 5 Mar 08:30",
+  "participants": [
+    {"name":"Sydney Swans","data":[{"label":"Head to Head","value":"1.39"}]},
+    {"name":"Carlton","data":[{"label":"Head to Head","value":"3.02"}]}
+  ]
+}
+
+
+So for AFL:
+
+home = participants[0].name
+
+away = participants[1].name
+
+odds = the participants’ "Head to Head" values
+
+datetime parse from the eventTime string in Australia/Sydney, then convert to UTC for your mapper.
+
+NRL rows (mixed quality)
+
+Some look great:
+
+{
+  "eventTime": "02:15",
+  "competition": "NRL",
+  "participants": [... Head to Head 2.31 / 1.62 ...]
+}
+
+
+But no date. Those are risky for matching.
+
+Rule: for NRL, only include rows where you can form a reliable datetime. With the current scrape, that means:
+
+If eventTime includes weekday+day+month → parse it
+
+If it’s only HH:MM → drop it (or mark “time unknown” and exclude from matching)
+
+Right now, your Rugby League section mostly has time-only, so we should either:
+
+find a Sportsbet URL that returns NRL with full dates, or
+
+keep only the “NRL” entries and match by teams only with a very wide time tolerance (I don’t recommend that; it’ll create false matches).
+
+3) Get NRL and NBL using better Sportsbet URLs (best move)
+
+Your actor is clearly scraping a list of URLs (shown in your run output). We should change it so the AU provider fetches league-specific pages that contain dated fixtures.
+
+You already have:
+
+AFL: https://www.sportsbet.com.au/betting/australian-rules/afl ✅
+
+For NRL and NBL, the likely pattern on Sportsbet is:
+
+Rugby League → a page for NRL specifically (not the generic /rugby-league/)
+
+Basketball → a page for NBL (not /basketball-us)
+
+Action for you (quick):
+Open Sportsbet in your browser and navigate to:
+
+NRL head-to-head market page
+
+NBL head-to-head market page
+
+Copy the URLs. That’s all I need to wire them in.
+
+(If you want: you can also just click through Sportsbet → NRL → choose a match → then go “Back” to the list page and grab that URL.)
+
+4) What to change in code (minimal, safe)
+A) League metadata
+
+Add:
+
+AFL → odds_provider="sportsbet", sportsbet_url="/betting/australian-rules/afl"
+
+NRL → odds_provider="sportsbet", sportsbet_url="<NRL list url>"
+
+NBL → odds_provider="sportsbet", sportsbet_url="<NBL list url>"
+
+B) New file: sportsbet_odds.py (parser)
+
+Responsibilities:
+
+take the Apify dataset output
+
+select the correct item by URL (or competition filter)
+
+extract only “Head to Head” markets with numeric decimals
+
+parse datetime (Sydney → UTC)
+
+return canonical odds events
+
+C) Router in odds_fetch.py
+
+If league’s provider is "sportsbet":
+
+call Sportsbet actor once
+
+parse + return canonical events
+Else:
+
+use Harvest actor (existing)
+
+D) UI change
+
+When provider == sportsbet:
+
+hide sportsbook selector (it’s always Sportsbet)
+
+show badge “Odds source: Sportsbet (AU)”
+
+5) Date parsing rules (so you don’t get bitten later)
+
+Sportsbet gives two formats:
+
+"Thursday, 5 Mar 08:30" → parse using current year (from today) with rollover handling:
+
+if parsed date is > ~330 days in the past, assume next year
+
+"07:00" → insufficient. Don’t use for matching.

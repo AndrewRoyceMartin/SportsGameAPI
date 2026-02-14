@@ -28,10 +28,11 @@ def fetch_elo_ratings(league_label: str, history_days: int) -> Tuple[dict, int]:
     return ratings, len(results)
 
 
-def fetch_harvest_odds(harvest_key: str, lookahead_days: int) -> List[Dict[str, Any]]:
+def fetch_harvest_odds(harvest_key: str, lookahead_days: int, league_label: str = "") -> List[Dict[str, Any]]:
     return fetch_odds_for_window(
         harvest_league=harvest_key,
         lookahead_days=lookahead_days,
+        league_label=league_label or None,
     )
 
 

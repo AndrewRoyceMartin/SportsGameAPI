@@ -265,7 +265,7 @@ def _run_pipeline(
             text=f"Fetching live odds from sportsbooks ({harvest_key}, {lookahead_days} day window)...",
         )
         try:
-            harvest_games = fetch_harvest_odds(harvest_key, lookahead_days)
+            harvest_games = fetch_harvest_odds(harvest_key, lookahead_days, league_label=league_label)
         except Exception as e:
             st.error(f"Failed to fetch odds: {e}")
             progress.empty()

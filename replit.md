@@ -12,7 +12,8 @@ A Streamlit-based sports prediction application that finds value bets by compari
 - `stats_provider.py` - SofaScore API client with Game dataclass, multi-sport support (football, basketball, ice-hockey, american-football, baseball, tennis, mma)
 - `league_map.py` - Maps league labels to SofaScore filters and Harvest actor league keys; groups leagues into Production vs Experimental; LEAGUE_SPORT mapping for sport filter UI
 - `league_defaults.py` - Per-league default filter values (min edge, odds range, history/lookahead days, top N); RUN_PROFILES (Conservative/Balanced/Aggressive) with apply_profile()
-- `odds_fetch.py` - Multi-day odds fetching with deduplication across lookahead window
+- `sportsbet_odds.py` - Sportsbet AU odds parser: extracts Head to Head markets, parses AU datetimes, transforms to Harvest-compatible format
+- `odds_fetch.py` - Odds fetching with provider routing (Harvest for US leagues, Sportsbet for AU leagues)
 - `odds_math.py` - American-to-decimal conversion, implied probability calculation
 - `odds_extract.py` - MoneylineSnapshot dataclass, moneyline extraction, consensus median pricing
 - `mapper.py` - Match Game fixtures to harvest odds events (time window + fuzzy team names + alias expansion); handles "Surname, Name" tennis format
@@ -23,7 +24,8 @@ A Streamlit-based sports prediction application that finds value bets by compari
 
 ## Supported Leagues
 Harvest actor supports: NFL, NBA, NHL, UCL, UFC, College-Football, College-Basketball
-SofaScore provides fixtures/results for all of these via sport-specific endpoints (basketball, ice-hockey, american-football, football, mma).
+Sportsbet actor (canadesk~sportsbet-scraper) supports: AFL, NRL, NBL — odds via Head to Head markets
+SofaScore provides fixtures/results via sport-specific endpoints (basketball, ice-hockey, american-football, football, mma, aussie-rules, rugby-league).
 
 ## Tech Stack
 - Python 3.11
@@ -79,7 +81,7 @@ SofaScore provides fixtures/results for all of these via sport-specific endpoint
 - **Reason-coded empty states**: Specific explanations for why no value bets were found at each pipeline stage
 
 ## Production Safety
-- 2-outcome leagues (NBA, NFL, NHL, College FB/BB): full pipeline, normal save
+- 2-outcome leagues (NBA, NFL, NHL, AFL, NRL, NBL, College FB/BB): full pipeline, normal save
 - Experimental leagues (Champions League, UFC): save gated behind checkbox, tagged in DB
 - Duplicate pick protection via unique index on (match_date, home_team, away_team, selection, odds_decimal)
 

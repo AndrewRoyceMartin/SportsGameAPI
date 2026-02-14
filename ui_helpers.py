@@ -6,7 +6,7 @@ import streamlit as st
 import pandas as pd
 
 from odds_extract import extract_moneylines, consensus_decimal
-from odds_fetch import get_fetch_errors, get_fatal_error
+from odds_fetch import get_fetch_errors, get_fatal_error, get_odds_source
 from stats_provider import get_fetch_failure_count, get_http_429_count, get_http_5xx_count, get_http_404_count, get_last_status_code
 from features import elo_win_prob
 from league_map import is_two_outcome
@@ -38,6 +38,9 @@ def show_diagnostics(
             "**Matched** = fixtures paired to odds successfully. "
             "**Value bets** = picks that passed your filters."
         )
+        odds_source = get_odds_source()
+        if odds_source:
+            st.caption(f"Odds source: **{odds_source}**")
         fatal = get_fatal_error()
         fetch_errors = get_fetch_errors()
         if fatal:

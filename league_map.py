@@ -5,6 +5,9 @@ LEAGUE_MAP = {
     "NFL": "NFL",
     "College Football": "College-Football",
     "College Basketball": "College-Basketball",
+    "AFL": "AFL",
+    "NRL": "NRL",
+    "NBL": "NBL",
     "UFC": "UFC",
 }
 
@@ -12,6 +15,9 @@ TWO_OUTCOME_LEAGUES = [
     "NBA",
     "NFL",
     "NHL",
+    "AFL",
+    "NRL",
+    "NBL",
     "College Football",
     "College Basketball",
 ]
@@ -26,9 +32,12 @@ _SEPARATOR = "\u2014 Experimental \u2014"
 LEAGUE_SPORT = {
     "NBA": "Basketball",
     "College Basketball": "Basketball",
+    "NBL": "Basketball",
     "NFL": "Football",
     "College Football": "Football",
     "NHL": "Hockey",
+    "AFL": "Aussie Rules",
+    "NRL": "Rugby League",
     "Champions League": "Soccer",
     "UFC": "MMA",
 }
