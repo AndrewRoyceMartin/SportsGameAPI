@@ -41,3 +41,18 @@ def is_two_outcome(league_label: str) -> bool:
 
 def is_separator(league_label: str) -> bool:
     return league_label == _SEPARATOR
+
+
+SOFASCORE_FILTERS = {
+    "Champions League": "Champions League",
+    "NBA": "NBA",
+    "NHL": "NHL",
+    "NFL": "NFL",
+    "College Football": "College Football",
+    "College Basketball": "College Basketball",
+    "UFC": "UFC",
+}
+
+
+def sofascore_filter_for(league_label: str) -> str:
+    return SOFASCORE_FILTERS.get(league_label, league_label)

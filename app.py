@@ -6,25 +6,15 @@ import pandas as pd
 from datetime import date, timedelta
 
 from store import save_picks, get_recent_picks, init_db
-from league_map import LEAGUE_MAP, sofascore_to_harvest, available_leagues, is_two_outcome, is_separator
+from league_map import sofascore_to_harvest, available_leagues, is_two_outcome, is_separator, sofascore_filter_for
 from league_defaults import DEFAULTS
-from stats_provider import get_upcoming_games, get_results_history, Game
+from stats_provider import get_upcoming_games, get_results_history, Game, get_fetch_failure_count
 from features import build_elo_ratings, elo_win_prob
-from apify_client import run_actor_get_items
-from odds_fetch import fetch_odds_for_window
+from odds_fetch import fetch_odds_for_window, get_fetch_errors
 from odds_extract import extract_moneylines, consensus_decimal
 from mapper import match_games_to_odds
 from value_engine import implied_probability, edge, expected_value
 
-SOFASCORE_LEAGUE_FILTERS = {
-    "Champions League": "Champions League",
-    "NBA": "NBA",
-    "NHL": "NHL",
-    "NFL": "NFL",
-    "College Football": "College Football",
-    "College Basketball": "College Basketball",
-    "UFC": "UFC",
-}
 
 
 def _game_to_elo_dict(g: Game) -> dict:
@@ -187,6 +177,14 @@ def _show_diagnostics(odds_fetched, odds_with_lines, fixtures_fetched=None, matc
             "**Matched** = fixtures paired to odds successfully. "
             "**Value bets** = picks that passed your filters."
         )
+        fetch_errors = get_fetch_errors()
+        if fetch_errors:
+            st.warning(f"Odds fetch skipped {len(fetch_errors)} day(s) due to errors:")
+            for date_str, reason in fetch_errors:
+                st.caption(f"  {date_str}: {reason[:120]}")
+        stats_failures = get_fetch_failure_count()
+        if stats_failures:
+            st.warning(f"Stats provider skipped {stats_failures} day(s) due to API errors.")
 
 
 def render_value_bets(league_label, min_edge, odds_range, top_n, history_days, lookahead_days=3):
@@ -206,7 +204,7 @@ def render_value_bets(league_label, min_edge, odds_range, top_n, history_days, l
         st.error(f"No odds source mapping for league: {league_label}")
         return
 
-    sofascore_filter = SOFASCORE_LEAGUE_FILTERS.get(league_label, league_label)
+    sofascore_filter = sofascore_filter_for(league_label)
 
     three_outcome = not is_two_outcome(league_label)
     if three_outcome:
@@ -495,7 +493,7 @@ def render_saved_picks():
                     "Odds": f"{h.get('odds_decimal', 0):.2f}" if h.get("odds_decimal") else "",
                     "Edge": f"{h.get('edge', 0):.1%}" if h.get("edge") else "",
                     "Result": h.get("result", "Pending"),
-                    "P/L": f"{h.get('profit_loss', 0):.2f}" if h.get("profit_loss") is not None else "",
+                    "P/L": f"{h['profit_loss']:.2f}" if h.get("profit_loss") is not None else "",
                     "Type": exp_flag,
                 })
             st.dataframe(pd.DataFrame(hist_rows), use_container_width=True, hide_index=True)

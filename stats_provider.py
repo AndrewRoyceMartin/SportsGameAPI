@@ -97,12 +97,21 @@ def _parse_game(ev: Dict[str, Any]) -> Optional[Game]:
         return None
 
 
+_last_fetch_failures: int = 0
+
+
+def get_fetch_failure_count() -> int:
+    return _last_fetch_failures
+
+
 def _collect_games(
     date_from: date,
     date_to: date,
     league: str,
     wanted_status: str,
 ) -> List[Game]:
+    global _last_fetch_failures
+    _last_fetch_failures = 0
     sport = _sport_for_league(league)
     games: List[Game] = []
     seen_ids: Set[int] = set()
@@ -112,6 +121,7 @@ def _collect_games(
         try:
             events = _fetch_events_for_date(d, sport=sport)
         except Exception:
+            _last_fetch_failures += 1
             d += timedelta(days=1)
             continue
 

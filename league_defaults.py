@@ -39,4 +39,20 @@ DEFAULTS = {
         "lookahead_days": 7,
         "top_n": 15,
     },
+    "Champions League": {
+        "min_edge": 5,
+        "min_odds": 1.80,
+        "max_odds": 4.00,
+        "history_days": 90,
+        "lookahead_days": 7,
+        "top_n": 10,
+    },
+    "UFC": {
+        "min_edge": 4,
+        "min_odds": 1.50,
+        "max_odds": 4.00,
+        "history_days": 180,
+        "lookahead_days": 7,
+        "top_n": 10,
+    },
 }
