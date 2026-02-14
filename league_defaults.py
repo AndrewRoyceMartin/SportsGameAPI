@@ -1,0 +1,42 @@
+DEFAULTS = {
+    "NBA": {
+        "min_edge": 3,
+        "min_odds": 1.60,
+        "max_odds": 3.50,
+        "history_days": 60,
+        "lookahead_days": 3,
+        "top_n": 10,
+    },
+    "NHL": {
+        "min_edge": 3,
+        "min_odds": 1.60,
+        "max_odds": 3.75,
+        "history_days": 60,
+        "lookahead_days": 3,
+        "top_n": 10,
+    },
+    "NFL": {
+        "min_edge": 4,
+        "min_odds": 1.60,
+        "max_odds": 4.00,
+        "history_days": 365,
+        "lookahead_days": 7,
+        "top_n": 10,
+    },
+    "College Basketball": {
+        "min_edge": 4,
+        "min_odds": 1.70,
+        "max_odds": 4.50,
+        "history_days": 60,
+        "lookahead_days": 2,
+        "top_n": 15,
+    },
+    "College Football": {
+        "min_edge": 5,
+        "min_odds": 1.70,
+        "max_odds": 5.00,
+        "history_days": 365,
+        "lookahead_days": 7,
+        "top_n": 15,
+    },
+}

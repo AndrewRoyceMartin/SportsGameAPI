@@ -7,6 +7,7 @@ from datetime import date, timedelta
 
 from store import save_picks, get_recent_picks, init_db
 from league_map import LEAGUE_MAP, sofascore_to_harvest, available_leagues, is_two_outcome, is_separator
+from league_defaults import DEFAULTS
 from stats_provider import get_upcoming_games, get_results_history, Game
 from features import build_elo_ratings, elo_win_prob
 from apify_client import run_actor_get_items
@@ -52,19 +53,54 @@ def main():
             st.warning("Please select a league above or below the separator.")
             st.stop()
 
+        def _apply_defaults(league: str):
+            d = DEFAULTS.get(league)
+            if not d:
+                return
+            st.session_state["min_edge"] = d["min_edge"]
+            st.session_state["odds_range"] = (d["min_odds"], d["max_odds"])
+            st.session_state["history_days"] = d["history_days"]
+            st.session_state["lookahead_days"] = d["lookahead_days"]
+            st.session_state["top_n"] = d["top_n"]
+
+        prev = st.session_state.get("_prev_league")
+        if prev != league_label:
+            _apply_defaults(league_label)
+            st.session_state["_prev_league"] = league_label
+
+        d_fb = DEFAULTS.get(league_label, {})
+        if "min_edge" not in st.session_state:
+            st.session_state["min_edge"] = d_fb.get("min_edge", 5)
+        if "odds_range" not in st.session_state:
+            st.session_state["odds_range"] = (d_fb.get("min_odds", 1.50), d_fb.get("max_odds", 5.00))
+        if "top_n" not in st.session_state:
+            st.session_state["top_n"] = d_fb.get("top_n", 10)
+        if "history_days" not in st.session_state:
+            st.session_state["history_days"] = d_fb.get("history_days", 90)
+        if "lookahead_days" not in st.session_state:
+            st.session_state["lookahead_days"] = d_fb.get("lookahead_days", 3)
+
         st.subheader("Value Filters")
-        min_edge_pct = st.slider("Min Edge %", 1, 30, 5, step=1)
+        min_edge_pct = st.slider("Min Edge %", 1, 30, step=1, key="min_edge")
         min_edge_val = min_edge_pct / 100.0
-        odds_range = st.slider("Odds Range", 1.10, 10.0, (1.50, 5.00), step=0.05)
-        top_n = st.selectbox("Max Results", options=[5, 10, 15, 20, 25], index=1)
+        odds_range = st.slider("Odds Range", 1.10, 10.0, step=0.05, key="odds_range")
+        top_n_options = [5, 10, 15, 20, 25]
+        top_n_val = st.session_state["top_n"]
+        top_n_idx = top_n_options.index(top_n_val) if top_n_val in top_n_options else 1
+        top_n = st.selectbox("Max Results", options=top_n_options, index=top_n_idx)
 
         st.subheader("History Window")
-        history_days = st.slider("Elo History (days)", 30, 180, 90, step=10)
+        history_days = st.slider("Elo History (days)", 30, 365, step=10, key="history_days")
+        lookahead_days = st.slider("Lookahead (days)", 1, 14, step=1, key="lookahead_days")
+
+        if st.button("Reset filters to league defaults"):
+            _apply_defaults(league_label)
+            st.rerun()
 
     tab_value, tab_history = st.tabs(["Value Bets", "Saved Picks"])
 
     with tab_value:
-        render_value_bets(league_label, min_edge_val, odds_range, top_n, history_days)
+        render_value_bets(league_label, min_edge_val, odds_range, top_n, history_days, lookahead_days)
 
     with tab_history:
         render_saved_picks()
@@ -127,7 +163,7 @@ def _show_diagnostics(odds_fetched, odds_with_lines, fixtures_fetched=None, matc
         cols[4].metric("Value bets", value_bets if value_bets is not None else "—")
 
 
-def render_value_bets(league_label, min_edge, odds_range, top_n, history_days):
+def render_value_bets(league_label, min_edge, odds_range, top_n, history_days, lookahead_days=3):
     st.subheader("Value Bets")
     st.caption("Compare Elo model predictions against live sportsbook consensus odds")
 
@@ -213,7 +249,7 @@ def _run_pipeline(league_label, harvest_key, sofascore_filter,
             return
 
         latest_game_date = latest_dt.date() if latest_dt else None
-        fixture_end = max(date.today() + timedelta(days=14), latest_game_date) if latest_game_date else date.today() + timedelta(days=14)
+        fixture_end = max(date.today() + timedelta(days=lookahead_days), latest_game_date) if latest_game_date else date.today() + timedelta(days=lookahead_days)
 
         progress.progress(55, text="Fetching upcoming fixtures...")
         upcoming = get_upcoming_games(league=sofascore_filter, date_to=fixture_end)

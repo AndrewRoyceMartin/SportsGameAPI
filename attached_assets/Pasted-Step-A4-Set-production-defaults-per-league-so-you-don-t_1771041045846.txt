@@ -1,0 +1,109 @@
+Step A4: Set production defaults per league (so you don’t constantly tweak sliders)
+
+Right now you’re using one set of filters across all sports. For Option A, the app should automatically apply sensible defaults when you change league, while still letting you override them.
+
+Goal
+
+When league changes, auto-set:
+
+Min Edge %
+
+Odds Range
+
+History window (days)
+
+Lookahead window (days)
+
+Top N
+
+These defaults should be conservative and reflect market efficiency.
+
+Step A4.1 — Add a defaults dict
+
+Create league_defaults.py:
+
+DEFAULTS = {
+    "NBA": {
+        "min_edge": 0.03,
+        "min_odds": 1.60,
+        "max_odds": 3.50,
+        "history_days": 60,
+        "lookahead_days": 3,
+        "top_n": 10,
+    },
+    "NHL": {
+        "min_edge": 0.03,
+        "min_odds": 1.60,
+        "max_odds": 3.75,
+        "history_days": 60,
+        "lookahead_days": 3,
+        "top_n": 10,
+    },
+    "NFL": {
+        "min_edge": 0.04,
+        "min_odds": 1.60,
+        "max_odds": 4.00,
+        "history_days": 365,
+        "lookahead_days": 7,
+        "top_n": 10,
+    },
+    "College Basketball": {
+        "min_edge": 0.04,
+        "min_odds": 1.70,
+        "max_odds": 4.50,
+        "history_days": 60,
+        "lookahead_days": 2,
+        "top_n": 15,
+    },
+    "College Football": {
+        "min_edge": 0.05,
+        "min_odds": 1.70,
+        "max_odds": 5.00,
+        "history_days": 365,
+        "lookahead_days": 7,
+        "top_n": 15,
+    },
+}
+
+Step A4.2 — Apply defaults on league change (Streamlit-safe)
+
+In app.py, right after selected_league is set:
+
+import streamlit as st
+from league_defaults import DEFAULTS
+
+def apply_defaults(league: str):
+    d = DEFAULTS.get(league)
+    if not d:
+        return
+    st.session_state["min_edge"] = d["min_edge"]
+    st.session_state["min_odds"] = d["min_odds"]
+    st.session_state["max_odds"] = d["max_odds"]
+    st.session_state["history_days"] = d["history_days"]
+    st.session_state["lookahead_days"] = d["lookahead_days"]
+    st.session_state["top_n"] = d["top_n"]
+
+# Apply once per change
+prev = st.session_state.get("_prev_league")
+if prev != selected_league:
+    apply_defaults(selected_league)
+    st.session_state["_prev_league"] = selected_league
+
+
+Then make your widgets read/write these keys:
+
+min_edge = st.slider("Min Edge %", 0.0, 0.20, st.session_state.get("min_edge", 0.03), key="min_edge")
+min_odds, max_odds = st.slider("Odds Range", 1.10, 10.0, (st.session_state.get("min_odds", 1.6), st.session_state.get("max_odds", 3.5)), key="odds_range")
+
+
+(If you currently use two separate sliders for odds min/max, we’ll adapt to that.)
+
+Step A4.3 — Add a “Reset to defaults” button
+
+In the sidebar:
+
+if st.button("Reset filters to league defaults"):
+    apply_defaults(selected_league)
+
+
+This gives you control when you’ve experimented.
