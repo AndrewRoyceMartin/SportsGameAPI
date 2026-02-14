@@ -1,0 +1,55 @@
+Nice — you’ve already done the hard part (dropping in the hardened clients and confirming the only Apify caller is compatible). Here’s the exact ui_helpers.py change pattern to surface the new SofaScore diagnostics cleanly, plus one extra “quality-of-life” metric that helps you spot rate limiting immediately.
+
+Update ui_helpers.py diagnostics panel
+
+Wherever you currently render the diagnostics block (something like “Odds games fetched / Fixtures fetched / Matched / Value bets”), add the three counters from stats_provider.py.
+
+1) Import the new accessors
+
+Near the top of ui_helpers.py:
+
+from stats_provider import (
+    get_fetch_failure_count,
+    get_http_429_count,
+    get_http_5xx_count,
+)
+
+
+If you already import stats_provider as a module, you can call stats_provider.get_http_429_count() etc. Either way is fine — the above is simplest.
+
+2) Add these rows to your diagnostics display
+If you use st.metric blocks
+
+Add a small row under “Fixtures fetched” (or wherever you display SofaScore counts):
+
+failures = get_fetch_failure_count()
+n429 = get_http_429_count()
+n5xx = get_http_5xx_count()
+
+st.markdown("**SofaScore diagnostics**")
+c1, c2, c3 = st.columns(3)
+c1.metric("Fetch failures", failures)
+c2.metric("HTTP 429 (rate limit)", n429)
+c3.metric("HTTP 5xx (server)", n5xx)
+
+If you use a dictionary/table-style panel
+
+Append something like:
+
+diag_rows.append(("SofaScore fetch failures", str(get_fetch_failure_count())))
+diag_rows.append(("SofaScore HTTP 429 (rate limit)", str(get_http_429_count())))
+diag_rows.append(("SofaScore HTTP 5xx (server)", str(get_http_5xx_count())))
+
+Optional: add a single “Rate limiting risk” indicator (very useful)
+
+This makes it obvious when results are “thin” because of rate limiting rather than mapping/model logic.
+
+n429 = get_http_429_count()
+if n429 > 0:
+    st.warning(
+        f"SofaScore rate limiting detected ({n429}× HTTP 429). "
+        "Fixture/history counts may be incomplete for this run."
+    )
+
+
+You can gate this warning behind a “Show diagnostics” toggle if you prefer a cleaner UI.
