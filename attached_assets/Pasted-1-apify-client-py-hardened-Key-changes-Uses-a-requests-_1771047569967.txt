@@ -1,3 +1,16 @@
+1) apify_client.py (hardened)
+
+Key changes:
+
+Uses a requests.Session() for connection reuse
+
+Retries on transient failures (timeouts/5xx/429)
+
+Distinguishes “auth/config” vs “network/transient” failures
+
+Optional logger injection (so UI can show last error cleanly)
+
+# apify_client.py
 from __future__ import annotations
 
 import os
@@ -20,13 +33,15 @@ class ApifyTransientError(ApifyError):
     pass
 
 
-DEFAULT_TIMEOUT = 60
+DEFAULT_TIMEOUT = 60  # seconds per request (keep actor runtime reasonable)
 DEFAULT_MAX_RETRIES = 5
-DEFAULT_BACKOFF_BASE = 0.6
-DEFAULT_BACKOFF_CAP = 12.0
+DEFAULT_BACKOFF_BASE = 0.6  # seconds
+DEFAULT_BACKOFF_CAP = 12.0  # seconds
 
 
 def _sleep_backoff(attempt: int, base: float, cap: float) -> None:
+    # exponential backoff with jitter
+    # attempt: 0,1,2,...
     delay = min(cap, base * (2 ** attempt))
     jitter = random.uniform(0, delay * 0.25)
     time.sleep(delay + jitter)
@@ -41,7 +56,7 @@ def run_actor_get_items(
     backoff_base: float = DEFAULT_BACKOFF_BASE,
     backoff_cap: float = DEFAULT_BACKOFF_CAP,
     session: Optional[requests.Session] = None,
-    logger: Optional[Any] = None,
+    logger: Optional[Any] = None,  # duck-typed logger: .info/.warning/.error
 ) -> List[Dict[str, Any]]:
     token = os.getenv("APIFY_TOKEN")
     if not token:
@@ -57,6 +72,11 @@ def run_actor_get_items(
         params["limit"] = limit
 
     sess = session or requests.Session()
+
+    # Retry only on transient errors:
+    # - request timeouts
+    # - 5xx
+    # - 429 (rate limited)
     last_exc: Optional[Exception] = None
 
     for attempt in range(max_retries + 1):
@@ -68,11 +88,13 @@ def run_actor_get_items(
 
             r = sess.post(url, params=params, json=actor_input, timeout=timeout)
 
+            # Auth / invalid token usually 401/403 → do not retry
             if r.status_code in (401, 403):
                 raise ApifyAuthError(
                     f"Apify auth failed (HTTP {r.status_code}). Check APIFY_TOKEN."
                 )
 
+            # 429 / 5xx → retry
             if r.status_code == 429 or 500 <= r.status_code < 600:
                 if attempt < max_retries:
                     if logger:
@@ -103,11 +125,14 @@ def run_actor_get_items(
                 f"Apify request failed after retries: {e}"
             ) from e
 
-        except ApifyError:
+        except ApifyError as e:
+            # already classified; do not wrap
             raise
 
         except Exception as e:
+            # Unknown error → don't keep retrying blindly
             last_exc = e
             raise ApifyError(f"Apify unexpected failure: {e}") from e
 
+    # Shouldn't reach here
     raise ApifyError(f"Apify failed: {last_exc}")
