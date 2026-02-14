@@ -5,7 +5,13 @@ import random
 import time
 from typing import Any, Dict, List, Optional
 
+import re
+
 import requests
+
+
+def _redact(msg: str) -> str:
+    return re.sub(r"token=[A-Za-z0-9_\-]+", "token=***", str(msg))
 
 
 class ApifyError(RuntimeError):
@@ -103,11 +109,11 @@ def run_actor_get_items(
             last_exc = e
             if attempt < max_retries:
                 if logger:
-                    logger.warning(f"Apify network timeout/connection error; retrying: {e}")
+                    logger.warning(f"Apify network timeout/connection error; retrying: {_redact(e)}")
                 _sleep_backoff(attempt, backoff_base, backoff_cap)
                 continue
             raise ApifyTransientError(
-                f"Apify request failed after retries: {e}"
+                _redact(f"Apify request failed after retries: {e}")
             ) from e
 
         except ApifyError:
@@ -115,6 +121,6 @@ def run_actor_get_items(
 
         except Exception as e:
             last_exc = e
-            raise ApifyError(f"Apify unexpected failure: {e}") from e
+            raise ApifyError(_redact(f"Apify unexpected failure: {e}")) from e
 
-    raise ApifyError(f"Apify failed: {last_exc}")
+    raise ApifyError(_redact(f"Apify failed: {last_exc}"))
