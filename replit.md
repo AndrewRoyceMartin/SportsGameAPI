@@ -1,69 +1,64 @@
 # Sports Predictor
 
 ## Overview
-A Streamlit-based sports prediction application that uses Elo ratings to predict game outcomes and find value bets by comparing model predictions against live Sportsbet odds. Data is sourced from AllSportsAPI v2 and odds from Sportsbet via Apify.
+A Streamlit-based sports prediction application that finds value bets by comparing model predictions against live sportsbook odds. All data is sourced from Apify actors — odds from harvest/sportsbook-odds-scraper and stats/fixtures from a sports stats actor (TBD). Uses median consensus pricing across multiple sportsbooks.
 
 ## Project Architecture
-- `app.py` - Main Streamlit application entry point (frontend + all tabs)
-- `main.py` - CLI entry point for predictions
-- `api_client.py` - AllSportsAPI v2 client (Countries, Leagues, Fixtures, H2H)
-- `features.py` - Elo rating system with home advantage
-- `apify_runner.py` - Generic Apify actor runner and dataset fetcher
-- `sportsbet_odds.py` - Sportsbet scraper actor caller with odds normalisation
-- `mapper.py` - Match stats fixtures to Sportsbet events (time window + fuzzy team names)
+- `app.py` - Main Streamlit application (Value Bets + Saved Picks tabs)
+- `main.py` - CLI entry point stub
+- `apify_client.py` - Unified Apify REST client (run actor, get dataset items)
+- `apify_runner.py` - Legacy Apify client wrapper (uses apify-client SDK; being replaced)
+- `odds_math.py` - American-to-decimal conversion, implied probability calculation
+- `odds_extract.py` - MoneylineSnapshot dataclass, moneyline extraction, consensus median pricing
+- `sportsbet_odds.py` - Legacy Sportsbet scraper actor caller (being replaced)
+- `mapper.py` - Match stats fixtures to odds events (time window + fuzzy team names)
 - `value_engine.py` - Compute implied probability, edge, EV; filter and rank value bets
 - `store.py` - SQLite store for picks, odds-at-time, and results tracking
+- `features.py` - Elo rating system with home advantage
+- `test_apify_odds.py` - Integration test for harvest odds actor
 - `.streamlit/config.toml` - Streamlit server configuration (port 5000)
 
 ## Tech Stack
 - Python 3.11
 - Streamlit (UI framework)
-- scikit-learn (ML predictions)
 - pandas / numpy (data processing)
-- requests (API calls)
-- apify-client (Apify actor integration)
+- requests (API calls to Apify REST API)
 - thefuzz / rapidfuzz (fuzzy team name matching)
 - SQLite (picks storage)
 
-## API Details (AllSportsAPI v2)
-- Base URL: `https://apiv2.allsportsapi.com/football/`
-- Auth: `APIkey` query parameter
-- Key endpoints:
-  - `met=Countries` - list countries
-  - `met=Leagues` - list leagues (optional `countryId`)
-  - `met=Fixtures` - list fixtures by date range (`from`, `to`, optional `leagueId`)
-  - `met=H2H` - head to head (`firstTeamId`, `secondTeamId`)
-- Response format: `{"success": 1, "result": [...]}`
-- Game fields: `event_home_team`, `event_away_team`, `event_final_result` ("X - Y"), `event_date`, `event_status`
-- Date range limit: 15 days max when no leagueId specified (handled via chunking)
+## Apify Integration
+### Unified Client (`apify_client.py`)
+- Uses Apify REST API directly (no SDK dependency)
+- `run_actor_get_items(actor_id, actor_input, limit, timeout)` → list of dicts
+- Endpoint: `POST /v2/acts/{actor_id}/run-sync-get-dataset-items`
 
-## Apify / Sportsbet Integration
-- Actor: `lexis-solutions/sportsbet-com-au-scraper`
-- Returns: events with `eventTime`, `competition`, `eventName`, `outcomes`
-- Outcomes contain: selection name, odds/price, market
-- Normalised to: event, home_team, away_team, start_time, market, selection, odds_decimal
+### Odds Actor (harvest/sportsbook-odds-scraper)
+- Returns games with sportsbook moneyline/spread/totals odds
+- American odds converted to decimal via `odds_math.py`
+- Consensus pricing uses median across all sportsbooks via `odds_extract.py`
+
+### Stats/Results Actor (TBD)
+- Will provide historical match results, fixtures, team data
+- Needed for Elo ratings and backtesting
 
 ## Value Engine Pipeline
-1. Fetch upcoming fixtures from AllSportsAPI
+1. Fetch upcoming fixtures + historical results from stats actor
 2. Build Elo ratings from historical results
-3. Fetch live odds from Sportsbet via Apify
-4. Match fixtures to odds events (time window ±2hrs, fuzzy team names)
-5. Compute implied probability from odds, model probability from Elo
-6. Calculate edge (model_p - implied_p) and EV per unit stake
-7. Filter by min edge, odds range; rank by edge; return top N
+3. Fetch live odds from odds actor (harvest/sportsbook-odds-scraper)
+4. Extract moneyline snapshots, compute consensus median decimal odds
+5. Match fixtures to odds events (time window + fuzzy team names)
+6. Compute implied probability from odds, model probability from Elo
+7. Calculate edge (model_p - implied_p) and EV per unit stake
+8. Filter by min edge, odds range; rank by edge; return top N
 
 ## Required Secrets
-- `SPORTS_API_BASE_URL` - Base URL for AllSportsAPI
-- `SPORTS_API_KEY` - API key for AllSportsAPI
-- `APIFY_TOKEN` - Apify API token for Sportsbet scraper
+- `APIFY_TOKEN` - Apify API token (used for all actors)
+- `ODDS_ACTOR_ID` - harvest~sportsbook-odds-scraper
+- `STATS_ACTOR_ID` - TBD (sports stats actor)
 
 ## UI Tabs
-1. **Best Bets** - Top confidence picks ranked by Elo prediction strength
-2. **Value Bets** - Odds comparison with edge/EV calculation (requires Apify token)
-3. **All Predictions** - Full list of upcoming match predictions
-4. **Team Search** - Team profile with Elo, record, upcoming/recent (supports all-league search)
-5. **Rankings** - Elo rankings with bar chart
-6. **Recent Results** - Completed match results
+1. **Value Bets** - Odds comparison with edge/EV calculation
+2. **Saved Picks** - History of saved value bet picks
 
 ## Running
 ```
