@@ -5,11 +5,12 @@ import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, Tuple
 
-from apify_client import run_actor_get_items
+from apify_client import run_actor_get_items, ApifyAuthError, ApifyTransientError, ApifyError
 
 logger = logging.getLogger(__name__)
 
 _last_fetch_errors: List[Tuple[str, str]] = []
+_last_fatal_error: Optional[str] = None
 
 
 def fetch_odds_for_window(
@@ -19,8 +20,9 @@ def fetch_odds_for_window(
     actor_id: str = "harvest~sportsbook-odds-scraper",
     timeout: int = 120,
 ) -> List[Dict[str, Any]]:
-    global _last_fetch_errors
+    global _last_fetch_errors, _last_fatal_error
     _last_fetch_errors = []
+    _last_fatal_error = None
 
     all_items: List[Dict[str, Any]] = []
     seen: set = set()
@@ -39,12 +41,32 @@ def fetch_odds_for_window(
 
         try:
             items = run_actor_get_items(actor_id, actor_input, timeout=timeout)
-        except Exception as exc:
+        except ApifyTransientError as exc:
             reason = str(exc)
+            logger.warning("Odds fetch skipped %s (transient): %s", date_str, reason)
+            _last_fetch_errors.append((date_str, reason))
+            time.sleep(2)
+            continue
+        except ApifyAuthError as exc:
+            reason = str(exc)
+            logger.error("Odds fetch fatal auth error: %s", reason)
+            _last_fetch_errors.append((date_str, reason))
+            _last_fatal_error = reason
+            break
+        except ApifyError as exc:
+            reason = str(exc)
+            if "400 Bad Request" in reason:
+                logger.error("Odds fetch fatal 400 error: %s", reason)
+                _last_fetch_errors.append((date_str, reason))
+                _last_fatal_error = reason
+                break
             logger.warning("Odds fetch skipped %s: %s", date_str, reason)
             _last_fetch_errors.append((date_str, reason))
-            if "429" in reason or "500" in reason or "502" in reason or "503" in reason:
-                time.sleep(2)
+            continue
+        except Exception as exc:
+            reason = str(exc)
+            logger.warning("Odds fetch skipped %s (unexpected): %s", date_str, reason)
+            _last_fetch_errors.append((date_str, reason))
             continue
 
         for g in items:
@@ -65,3 +87,7 @@ def fetch_odds_for_window(
 
 def get_fetch_errors() -> List[Tuple[str, str]]:
     return list(_last_fetch_errors)
+
+
+def get_fatal_error() -> Optional[str]:
+    return _last_fatal_error

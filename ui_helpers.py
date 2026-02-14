@@ -6,8 +6,8 @@ import streamlit as st
 import pandas as pd
 
 from odds_extract import extract_moneylines, consensus_decimal
-from odds_fetch import get_fetch_errors
-from stats_provider import get_fetch_failure_count, get_http_429_count, get_http_5xx_count
+from odds_fetch import get_fetch_errors, get_fatal_error
+from stats_provider import get_fetch_failure_count, get_http_429_count, get_http_5xx_count, get_http_404_count, get_last_status_code
 from features import elo_win_prob
 from league_map import is_two_outcome
 
@@ -38,23 +38,35 @@ def show_diagnostics(
             "**Matched** = fixtures paired to odds successfully. "
             "**Value bets** = picks that passed your filters."
         )
+        fatal = get_fatal_error()
         fetch_errors = get_fetch_errors()
-        if fetch_errors:
+        if fatal:
+            st.error(
+                f"**Odds fetch aborted** (fatal error, remaining days skipped):\n\n"
+                f"`{fatal[:300]}`"
+            )
+        elif fetch_errors:
             st.warning(f"Odds fetch skipped {len(fetch_errors)} day(s) due to errors:")
             for date_str, reason in fetch_errors:
-                st.caption(f"  {date_str}: {reason[:120]}")
+                st.caption(f"  {date_str}: {reason[:200]}")
         stats_failures = get_fetch_failure_count()
         http_429 = get_http_429_count()
         http_5xx = get_http_5xx_count()
-        if stats_failures or http_429 or http_5xx:
+        http_404 = get_http_404_count()
+        last_status = get_last_status_code()
+        if stats_failures or http_429 or http_5xx or http_404:
             parts = []
             if stats_failures:
                 parts.append(f"{stats_failures} day(s) failed")
+            if http_404:
+                parts.append(f"{http_404} not-found (404) — likely wrong sport slug")
             if http_429:
                 parts.append(f"{http_429} rate-limit (429)")
             if http_5xx:
                 parts.append(f"{http_5xx} server error (5xx)")
             st.warning("Stats provider issues: " + ", ".join(parts) + ".")
+            if last_status and last_status != 200:
+                st.caption(f"Last HTTP status from stats source: {last_status}")
 
         from config_env import get_env_report
         env_missing, env_stale = get_env_report()

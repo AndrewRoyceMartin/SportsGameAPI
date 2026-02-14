@@ -1,0 +1,138 @@
+A) Odds side is failing hard
+
+You’re getting Apify 400 Bad Request for every day in the lookahead, so:
+
+Odds games fetched = 0
+
+“Odds fetch skipped 7 day(s) due to errors”
+
+Each day logs: Apify unexpected failure: 400 Client Error: Bad Request ...
+
+A 400 is not transient. It almost always means: your actor_input schema/values are invalid (wrong field name, wrong league key, wrong date format, unsupported book, etc.) or the actor ID is wrong.
+
+B) Stats side is failing hard
+
+“Stats provider issues: 121 day(s) failed.”
+
+That number screams: you ran a 120-day history window (plus 1 day), and every request failed.
+
+This commonly happens when:
+
+the SofaScore sport slug is wrong (e.g. sport="baseball"/"tennis" might be wrong for scheduled-events endpoints), causing 404 every day; or
+
+network blocked / TLS / repeated non-429/non-5xx errors; but 121 straight failures is usually bad endpoint.
+
+Right now your stats provider counts those as “failures” but doesn’t tell you the status code.
+
+Fix 1: Make Apify 400s self-explaining (must do)
+
+Right now you’re only seeing the generic HTTP error. You need the response body, because Apify will tell you exactly what field it didn’t like.
+
+Patch apify_client.py to include response text on 400
+
+Add this handling before raise_for_status():
+
+# after r = sess.post(...)
+if r.status_code == 400:
+    # include response payload so we can see which input field is invalid
+    msg = r.text
+    msg = msg[:800] + ("..." if len(msg) > 800 else "")
+    raise ApifyError(f"Apify 400 Bad Request. Actor input likely invalid. Response: {msg}")
+
+
+Also: if you want to stop wasting time looping days when config is wrong, treat 400 as fatal in odds_fetch.py (see Fix 2).
+
+Fix 2: Stop the “per-day retry loop” on non-recoverable errors
+
+Right now odds_fetch.py is likely doing: “for each day → call Apify → on error, log + continue”.
+That makes sense for timeouts/429/5xx, but not for 400.
+
+In odds_fetch.py, do:
+
+If exception is ApifyAuthError or ApifyError containing 400, abort the whole odds fetch immediately with a clear UI message.
+
+Only “skip day” for ApifyTransientError.
+
+Example pattern:
+
+from apify_client import ApifyAuthError, ApifyTransientError, ApifyError
+
+try:
+    items = run_actor_get_items(actor_id, actor_input, timeout=timeout)
+except ApifyTransientError as e:
+    # ok to skip this day
+    log_day_error(day, str(e))
+    continue
+except (ApifyAuthError, ApifyError) as e:
+    # fatal config/auth error: stop looping days
+    raise
+
+
+That will turn your diagnostics from “skipped 7 days” into one clear error.
+
+Fix 3: Surface why SofaScore failed 121/121 days (add last status + 404 handling)
+
+You need to distinguish:
+
+rate limiting (429)
+
+server errors (5xx)
+
+bad endpoint / wrong sport slug (404)
+
+other client errors (400/403)
+
+Update _fetch_events_for_date to record last HTTP code
+
+Add globals:
+
+_last_http_404: int = 0
+_last_last_status: Optional[int] = None
+
+def get_http_404_count() -> int:
+    return _last_http_404
+
+def get_last_status_code() -> Optional[int]:
+    return _last_last_status
+
+
+Then in _fetch_events_for_date:
+
+global _last_last_status
+_last_last_status = r.status_code
+
+if r.status_code == 404:
+    _last_http_404 += 1
+    _last_fetch_failures += 1
+    return []
+
+
+Then in the UI diagnostics, show:
+
+failures
+
+429
+
+5xx
+
+404
+
+last status code
+
+If you see 404 = 121, your sport slug/endpoint is wrong. That’s the likely outcome.
+
+What to do right now (fastest path)
+
+Apply Fix 1 (show Apify 400 response body)
+
+Re-run once, copy/paste one of those 400 responses here
+→ I’ll tell you exactly what field/value is wrong in your actor_input.
+
+Add Fix 3 for SofaScore 404 visibility
+→ if it’s 404s, we correct the sport slug(s) immediately.
+
+One strong hunch (based on the pattern)
+
+Apify 400 is likely coming from new league keys (MLB/ATP/WTA) not matching what the actor expects, or a required field missing/renamed.
+
+SofaScore 121 failures is very likely sport slug mismatch for scheduled-events for tennis/baseball (or a blocked endpoint), and you’re currently swallowing it as generic failures.

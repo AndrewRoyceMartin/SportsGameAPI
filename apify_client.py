@@ -73,6 +73,13 @@ def run_actor_get_items(
                     f"Apify auth failed (HTTP {r.status_code}). Check APIFY_TOKEN."
                 )
 
+            if r.status_code == 400:
+                body = r.text
+                body = body[:800] + ("..." if len(body) > 800 else "")
+                raise ApifyError(
+                    f"Apify 400 Bad Request. Actor input likely invalid. Response: {body}"
+                )
+
             if r.status_code == 429 or 500 <= r.status_code < 600:
                 if attempt < max_retries:
                     if logger:

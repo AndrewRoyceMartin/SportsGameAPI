@@ -84,6 +84,8 @@ _events_cache: Dict[Tuple[str, str], List[Dict[str, Any]]] = {}
 _last_fetch_failures: int = 0
 _last_http_429: int = 0
 _last_http_5xx: int = 0
+_last_http_404: int = 0
+_last_last_status: Optional[int] = None
 
 
 def get_fetch_failure_count() -> int:
@@ -98,15 +100,25 @@ def get_http_5xx_count() -> int:
     return _last_http_5xx
 
 
+def get_http_404_count() -> int:
+    return _last_http_404
+
+
+def get_last_status_code() -> Optional[int]:
+    return _last_last_status
+
+
 def clear_events_cache() -> None:
     _events_cache.clear()
 
 
 def reset_fetch_diagnostics() -> None:
-    global _last_fetch_failures, _last_http_429, _last_http_5xx
+    global _last_fetch_failures, _last_http_429, _last_http_5xx, _last_http_404, _last_last_status
     _last_fetch_failures = 0
     _last_http_429 = 0
     _last_http_5xx = 0
+    _last_http_404 = 0
+    _last_last_status = None
 
 
 def _fetch_events_for_date(
@@ -120,7 +132,7 @@ def _fetch_events_for_date(
     backoff_cap: float,
     logger: Optional[Any] = None,
 ) -> List[Dict[str, Any]]:
-    global _last_fetch_failures, _last_http_429, _last_http_5xx
+    global _last_fetch_failures, _last_http_429, _last_http_5xx, _last_http_404, _last_last_status
 
     cache_key = (sport, d.isoformat())
     if cache_key in _events_cache:
@@ -131,6 +143,12 @@ def _fetch_events_for_date(
     for attempt in range(max_retries + 1):
         try:
             r = session.get(url, headers=_HEADERS, timeout=timeout)
+            _last_last_status = r.status_code
+
+            if r.status_code == 404:
+                _last_http_404 += 1
+                _last_fetch_failures += 1
+                return []
 
             if r.status_code == 429:
                 _last_http_429 += 1
