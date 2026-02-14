@@ -73,16 +73,18 @@ def _count_games_with_odds(harvest_games):
     return count
 
 
-def _latest_harvest_date(harvest_games):
+def _harvest_date_range(harvest_games):
     from mapper import _parse_iso
+    earliest = None
     latest = None
     for g in harvest_games:
         dt = _parse_iso(g.get("scheduledTime", ""))
         if dt:
-            d = dt.date()
-            if latest is None or d > latest:
-                latest = d
-    return latest
+            if earliest is None or dt < earliest:
+                earliest = dt
+            if latest is None or dt > latest:
+                latest = dt
+    return earliest, latest
 
 
 def _show_harvest_games(harvest_games):
@@ -96,6 +98,16 @@ def _show_harvest_games(harvest_games):
             away_odds = consensus_decimal(snaps, "away")
             odds_str = f"H={home_odds:.2f} / A={away_odds:.2f}" if home_odds and away_odds else "No odds posted"
             st.write(f"**{h}** vs **{a}** — {t} — {odds_str}")
+
+
+def _show_diagnostics(odds_fetched, odds_with_lines, fixtures_fetched=None, matched=None, value_bets=None):
+    with st.expander("Pipeline diagnostics", expanded=False):
+        cols = st.columns(5)
+        cols[0].metric("Odds games fetched", odds_fetched)
+        cols[1].metric("With posted lines", odds_with_lines if odds_with_lines is not None else "—")
+        cols[2].metric("Fixtures fetched", fixtures_fetched if fixtures_fetched is not None else "—")
+        cols[3].metric("Matched", matched if matched is not None else "—")
+        cols[4].metric("Value bets", value_bets if value_bets is not None else "—")
 
 
 def render_value_bets(league_label, min_edge, odds_range, top_n, history_days):
@@ -154,35 +166,57 @@ def _run_pipeline(league_label, harvest_key, sofascore_filter,
             return
 
         games_with_odds = _count_games_with_odds(harvest_games)
+        earliest_dt, latest_dt = _harvest_date_range(harvest_games)
+
         if games_with_odds == 0:
+            progress.empty()
             st.warning(
-                f"Found {len(harvest_games)} {league_label} game(s) but sportsbooks "
-                f"haven't posted odds yet. Lines typically appear 1-2 days before game time."
+                f"Found {len(harvest_games)} scheduled {league_label} game(s) but "
+                f"0 have posted moneylines yet. Lines typically appear 1–2 days before game time."
+            )
+            if earliest_dt:
+                st.info(f"Earliest scheduled game: **{earliest_dt.strftime('%b %d, %Y %H:%M UTC')}** — try again within 48 hours of that time.")
+            _show_diagnostics(
+                odds_fetched=len(harvest_games),
+                odds_with_lines=0,
+                fixtures_fetched=None,
+                matched=None,
             )
             _show_harvest_games(harvest_games)
-            progress.empty()
             return
 
-        latest_game_date = _latest_harvest_date(harvest_games)
+        latest_game_date = latest_dt.date() if latest_dt else None
         fixture_end = max(date.today() + timedelta(days=14), latest_game_date) if latest_game_date else date.today() + timedelta(days=14)
 
         progress.progress(55, text="Fetching upcoming fixtures...")
         upcoming = get_upcoming_games(league=sofascore_filter, date_to=fixture_end)
         if not upcoming:
-            st.info(f"No upcoming fixtures found for {league_label} through {fixture_end}.")
             progress.empty()
+            st.info(f"No upcoming fixtures found for {league_label} through {fixture_end}.")
+            _show_diagnostics(
+                odds_fetched=len(harvest_games),
+                odds_with_lines=games_with_odds,
+                fixtures_fetched=0,
+                matched=None,
+            )
             return
 
         progress.progress(70, text=f"Matching {len(upcoming)} fixtures to {games_with_odds} odds events...")
         matched = match_games_to_odds(upcoming, harvest_games)
 
         if not matched:
+            progress.empty()
             st.warning(
                 f"Could not match any of {len(upcoming)} fixtures to "
                 f"{len(harvest_games)} odds events. Team names may differ between sources."
             )
+            _show_diagnostics(
+                odds_fetched=len(harvest_games),
+                odds_with_lines=games_with_odds,
+                fixtures_fetched=len(upcoming),
+                matched=0,
+            )
             _show_harvest_games(harvest_games)
-            progress.empty()
             return
 
         progress.progress(85, text="Computing value bets...")
@@ -191,9 +225,17 @@ def _run_pipeline(league_label, harvest_key, sofascore_filter,
         progress.progress(100, text="Done!")
         progress.empty()
 
+        _show_diagnostics(
+            odds_fetched=len(harvest_games),
+            odds_with_lines=games_with_odds,
+            fixtures_fetched=len(upcoming),
+            matched=len(matched),
+            value_bets=len(value_bets),
+        )
+
         if not value_bets:
             st.info(
-                f"No value bets found with edge ≥ {min_edge:.0%} in odds range "
+                f"No value bets found with edge >= {min_edge:.0%} in odds range "
                 f"{odds_range[0]:.2f} – {odds_range[1]:.2f}. Try adjusting filters."
             )
             _show_matched_summary(matched, elo_ratings)
