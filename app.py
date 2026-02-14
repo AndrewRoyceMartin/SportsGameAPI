@@ -11,6 +11,7 @@ from league_defaults import DEFAULTS
 from stats_provider import get_upcoming_games, get_results_history, Game
 from features import build_elo_ratings, elo_win_prob
 from apify_client import run_actor_get_items
+from odds_fetch import fetch_odds_for_window
 from odds_extract import extract_moneylines, consensus_decimal
 from mapper import match_games_to_odds
 from value_engine import implied_probability, edge, expected_value
@@ -236,12 +237,11 @@ def _run_pipeline(league_label, harvest_key, sofascore_filter,
         elo_dicts = [_game_to_elo_dict(g) for g in results]
         elo_ratings = build_elo_ratings(elo_dicts) if elo_dicts else {}
 
-        progress.progress(40, text=f"Fetching live odds from sportsbooks ({harvest_key})...")
+        progress.progress(40, text=f"Fetching live odds from sportsbooks ({harvest_key}, {lookahead_days} day window)...")
         try:
-            harvest_games = run_actor_get_items(
-                actor_id="harvest~sportsbook-odds-scraper",
-                actor_input={"league": harvest_key},
-                timeout=120,
+            harvest_games = fetch_odds_for_window(
+                harvest_league=harvest_key,
+                lookahead_days=lookahead_days,
             )
         except Exception as e:
             st.error(f"Failed to fetch odds: {e}")

@@ -1,0 +1,55 @@
+Great — that’s Option A fully operational now: production-first leagues, safe handling of experimental markets, per-league defaults, and plain-English explanations.
+
+Next step A5: Make odds fetching match your lookahead window
+
+Right now, you can still get “Fixtures fetched > 0” but “Odds games fetched = 0” simply because the Harvest actor is effectively date-scoped. To make daily scanning reliable, we should fetch odds for each date in the lookahead window (or at least today + tomorrow), then merge/dedupe.
+
+A5.1 Implement odds fetch across lookahead_days
+
+In your odds fetch function (where you call run_actor_get_items), change from a single call to a date loop:
+
+from datetime import datetime, timedelta
+import os
+from apify_client import run_actor_get_items
+
+def fetch_odds_for_window(harvest_league: str, lookahead_days: int, sportsbook: str | None = None):
+    actor_id = os.getenv("ODDS_ACTOR_ID")
+    all_items = []
+    seen = set()
+
+    start = datetime.utcnow().date()
+    for i in range(max(1, lookahead_days)):
+        d = start + timedelta(days=i)
+        actor_input = {"league": harvest_league, "date": d.strftime("%Y-%m-%d")}
+        if sportsbook:
+            actor_input["sportsbook"] = sportsbook
+
+        items = run_actor_get_items(actor_id, actor_input, limit=None)
+
+        # Dedupe by scheduledTime + teams (good enough)
+        for g in items:
+            home = (g.get("homeTeam") or {}).get("mediumName")
+            away = (g.get("awayTeam") or {}).get("mediumName")
+            t = g.get("scheduledTime")
+            key = (t, home, away)
+            if key in seen:
+                continue
+            seen.add(key)
+            all_items.append(g)
+
+    return all_items
+
+
+Then in your pipeline replace the old odds call with:
+
+odds_items = fetch_odds_for_window(harvest_league, lookahead_days, sportsbook=None)
+
+A5.2 Update diagnostics
+
+Your diagnostics should now reflect:
+
+odds games fetched = across the entire window
+
+with posted lines = count across the window
+
+This will immediately make NBA/NHL scanning “just work” on normal days.
