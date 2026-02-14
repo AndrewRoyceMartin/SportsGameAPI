@@ -11,7 +11,6 @@ from league_map import (
     available_leagues,
     is_two_outcome,
     is_separator,
-    sofascore_filter_for,
 )
 from league_defaults import DEFAULTS
 from stats_provider import (
@@ -257,8 +256,6 @@ def render_value_bets(
         st.error(f"No odds source mapping for league: {league_label}")
         return
 
-    sofascore_filter = sofascore_filter_for(league_label)
-
     three_outcome = not is_two_outcome(league_label)
     if three_outcome:
         st.warning(
@@ -271,7 +268,6 @@ def render_value_bets(
         _run_pipeline(
             league_label,
             harvest_key,
-            sofascore_filter,
             min_edge,
             odds_range,
             top_n,
@@ -284,7 +280,6 @@ def render_value_bets(
 def _run_pipeline(
     league_label,
     harvest_key,
-    sofascore_filter,
     min_edge,
     odds_range,
     top_n,
@@ -296,7 +291,7 @@ def _run_pipeline(
 
     try:
         progress.progress(10, text="Fetching historical results for Elo ratings...")
-        results = get_results_history(league=sofascore_filter, since_days=history_days)
+        results = get_results_history(league=league_label, since_days=history_days)
         if not results:
             st.warning(
                 f"No historical results found for {league_label}. Elo ratings will use defaults (1500)."
@@ -355,7 +350,7 @@ def _run_pipeline(
         )
 
         progress.progress(55, text="Fetching upcoming fixtures...")
-        upcoming = get_upcoming_games(league=sofascore_filter, date_to=fixture_end)
+        upcoming = get_upcoming_games(league=league_label, date_to=fixture_end)
         if not upcoming:
             progress.empty()
             st.info(

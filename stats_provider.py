@@ -21,23 +21,61 @@ class Game:
 _SOFASCORE_BASE = "https://api.sofascore.com/api/v1"
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
 
-LEAGUE_SPORT_MAP = {
-    "champions league": "football",
-    "nba": "basketball",
-    "nhl": "ice-hockey",
-    "nfl": "american-football",
-    "college football": "american-football",
-    "college basketball": "basketball",
-    "ufc": "mma",
+@dataclass
+class _LeagueRoute:
+    sport: str
+    accept: list
+
+
+_LEAGUE_ROUTING = {
+    "NBA": _LeagueRoute(
+        sport="basketball",
+        accept=["nba"],
+    ),
+    "NHL": _LeagueRoute(
+        sport="ice-hockey",
+        accept=["nhl"],
+    ),
+    "NFL": _LeagueRoute(
+        sport="american-football",
+        accept=["nfl"],
+    ),
+    "College Football": _LeagueRoute(
+        sport="american-football",
+        accept=["ncaa", "college football", "cfp", "fbs"],
+    ),
+    "College Basketball": _LeagueRoute(
+        sport="basketball",
+        accept=["ncaa", "college basketball", "march madness"],
+    ),
+    "Champions League": _LeagueRoute(
+        sport="football",
+        accept=["champions league", "ucl"],
+    ),
+    "UFC": _LeagueRoute(
+        sport="mma",
+        accept=["ufc"],
+    ),
 }
 
 
-def _sport_for_league(league: str) -> str:
+def _route_for_league(league: str) -> _LeagueRoute:
+    if league in _LEAGUE_ROUTING:
+        return _LEAGUE_ROUTING[league]
     league_lower = league.lower()
-    for key, sport in LEAGUE_SPORT_MAP.items():
-        if key in league_lower:
-            return sport
-    return "football"
+    for key, route in _LEAGUE_ROUTING.items():
+        if key.lower() in league_lower:
+            return route
+    return _LeagueRoute(sport="football", accept=[league.lower()])
+
+
+def _sport_for_league(league: str) -> str:
+    return _route_for_league(league).sport
+
+
+def _matches_league(game_league_str: str, accept: list) -> bool:
+    gl = game_league_str.lower()
+    return any(pat in gl for pat in accept)
 
 
 def _fetch_events_for_date(d: date, sport: str = "football") -> List[Dict[str, Any]]:
@@ -124,14 +162,14 @@ def _collect_games(
 ) -> List[Game]:
     global _last_fetch_failures
     _last_fetch_failures = 0
-    sport = _sport_for_league(league)
+    route = _route_for_league(league)
     games: List[Game] = []
     seen_ids: Set[int] = set()
 
     d = date_from
     while d <= date_to:
         try:
-            events = _fetch_events_for_date(d, sport=sport)
+            events = _fetch_events_for_date(d, sport=route.sport)
         except Exception:
             _last_fetch_failures += 1
             d += timedelta(days=1)
@@ -144,7 +182,7 @@ def _collect_games(
 
             game = _parse_game(ev)
             if game and game.status == wanted_status:
-                if league and league.lower() not in game.league.lower():
+                if league and not _matches_league(game.league, route.accept):
                     continue
                 games.append(game)
                 if ev_id is not None:
