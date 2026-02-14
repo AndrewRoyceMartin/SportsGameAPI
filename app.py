@@ -6,7 +6,7 @@ import pandas as pd
 from datetime import date, timedelta
 
 from store import save_picks, get_recent_picks, init_db
-from league_map import LEAGUE_MAP, sofascore_to_harvest, available_leagues, is_two_outcome
+from league_map import LEAGUE_MAP, sofascore_to_harvest, available_leagues, is_two_outcome, is_separator
 from stats_provider import get_upcoming_games, get_results_history, Game
 from features import build_elo_ratings, elo_win_prob
 from apify_client import run_actor_get_items
@@ -44,7 +44,13 @@ def main():
     with st.sidebar:
         st.header("Configuration")
 
-        league_label = st.selectbox("League", options=available_leagues(), index=0)
+        leagues = available_leagues()
+        default_idx = leagues.index("NBA") if "NBA" in leagues else 0
+        league_label = st.selectbox("League", options=leagues, index=default_idx)
+
+        if is_separator(league_label):
+            st.warning("Please select a league above or below the separator.")
+            st.stop()
 
         st.subheader("Value Filters")
         min_edge_pct = st.slider("Min Edge %", 1, 30, 5, step=1)

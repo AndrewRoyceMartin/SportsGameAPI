@@ -1,0 +1,87 @@
+Perfect — that screenshot confirms Step A2 is complete, and your additions go beyond what we asked in the best possible way.
+
+✅ Confirmed from your screenshot + notes
+
+The save gate is working (disabled message + checkbox).
+
+You implemented the DB flag + migration.
+
+You implemented Saved Picks tagging (“Experimental” vs standard).
+
+That’s exactly the “production safety” we needed.
+
+Step A3: Make the app default to “Production leagues first”
+
+Right now, Champions League is still in the dropdown and easy to pick. For Option A, the app should nudge you toward reliable 2-outcome markets.
+
+Goal
+
+When the app loads:
+
+Default league = NBA (or College Basketball) if available
+
+Group leagues into:
+
+Production (2-outcome)
+
+Experimental (3-outcome / model-risk)
+
+Streamlit doesn’t have native grouped dropdowns, but we can fake it cleanly.
+
+Step A3.1 — Adjust available_leagues() to return ordered lists
+
+In league_map.py:
+
+TWO_OUTCOME_LEAGUES = [
+    "NBA",
+    "NFL",
+    "NHL",
+    "College Football",
+    "College Basketball",
+]
+
+EXPERIMENTAL_LEAGUES = [
+    "Champions League",
+    "UFC",  # 2-outcome market but model-risk; keep it here if you want
+]
+
+def available_leagues() -> list[str]:
+    return TWO_OUTCOME_LEAGUES + ["— Experimental —"] + EXPERIMENTAL_LEAGUES
+
+
+And update is_two_outcome() to treat the separator as false:
+
+def is_two_outcome(league_label: str) -> bool:
+    return league_label in TWO_OUTCOME_LEAGUES
+
+Step A3.2 — In app.py, stop users selecting the separator
+
+After reading selected_league, add:
+
+if selected_league == "— Experimental —":
+    st.stop()
+
+
+Or better: auto-bump them back to NBA:
+
+if selected_league == "— Experimental —":
+    selected_league = "NBA"
+
+Step A3.3 — Set default league to a production league
+
+In the selectbox:
+
+leagues = available_leagues()
+default_idx = leagues.index("NBA") if "NBA" in leagues else 0
+selected_league = st.selectbox("League", leagues, index=default_idx)
+
+Why Step A3 matters
+
+It makes the day-to-day flow:
+
+click app
+
+run scan
+
+get picks (when odds posted)
+without accidentally living in “soccer land” where the model is knowingly incomplete.
