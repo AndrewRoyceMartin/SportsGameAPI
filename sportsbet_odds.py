@@ -56,12 +56,14 @@ def _parse_sportsbet_datetime(event_time: str) -> Optional[datetime]:
                 parsed = datetime.strptime(date_str, fmt)
                 if parsed.year == 1900:
                     now = datetime.now(_SYDNEY_TZ)
-                    parsed = parsed.replace(year=now.year)
+                    parsed = parsed.replace(year=now.year, tzinfo=_SYDNEY_TZ)
                     if (now - parsed).days > 330:
                         parsed = parsed.replace(year=now.year + 1)
                     elif (parsed - now).days > 330:
                         parsed = parsed.replace(year=now.year - 1)
-                local = parsed.replace(tzinfo=_SYDNEY_TZ)
+                    local = parsed
+                else:
+                    local = parsed.replace(tzinfo=_SYDNEY_TZ)
                 return local.astimezone(_UTC).replace(tzinfo=None)
             except ValueError:
                 continue
