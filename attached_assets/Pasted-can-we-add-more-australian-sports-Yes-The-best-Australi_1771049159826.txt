@@ -1,0 +1,93 @@
+can we add more australian sports
+
+Yes. The best Australian additions (given your 2-outcome first engine) are:
+
+Recommended AU leagues to add next
+Production-ready (mostly 2-outcome)
+
+NRL (Rugby League)
+
+AFL (Australian Football League)
+
+NBL (National Basketball League – Australia)
+
+Super Rugby (Pacific) (usually 2-outcome; draw is rare)
+
+Keep Experimental (draw-prone / market complications)
+
+A-League (soccer) → books are typically 3-way (Home/Draw/Away), so your current 2-outcome engine needs either:
+
+a true 3-way model, or
+
+switching to a 2-way market like Draw No Bet (different extraction + modelling assumption)
+
+What you’ll need to change (same pattern as MLB/Tennis)
+1) league_map.py
+
+Add:
+
+“AFL”
+
+“NRL”
+
+“NBL”
+
+optional: “Super Rugby”
+
+Mark A-League as Experimental unless you implement a 3-way path.
+
+2) league_defaults.py (starter defaults you can tune)
+
+AFL: history 120, lookahead 7, min edge 3%, odds 1.30–4.50, top 15
+
+NRL: history 120, lookahead 7, min edge 3%, odds 1.30–4.50, top 15
+
+NBL: history 120, lookahead 7, min edge 3%, odds 1.30–4.00, top 15
+
+Super Rugby: history 180, lookahead 7, min edge 3%, odds 1.30–4.50, top 15
+
+3) stats_provider.py routing (SofaScore sport endpoint + accept patterns)
+
+You’ll add routing entries like:
+
+AFL → sport="aussie-rules" (or whatever SofaScore uses for AFL)
+
+NRL → sport="rugby-league"
+
+NBL → sport="basketball"
+
+Super Rugby → sport="rugby-union"
+
+A-League → sport="football" (experimental)
+
+Important: SofaScore “sport” slugs must match their API path; once you confirm each slug, accept patterns usually include tournament names like “AFL”, “NRL”, “NBL”, “Super Rugby”, “A-League”.
+
+4) Odds side (Apify actor input + extraction)
+
+You’ll map each league to the actor’s league identifiers (similar to MLB→“MLB”, ATP→“ATP”). Then ensure odds_extract.py recognises AU naming like:
+
+“Head to Head”
+
+“H2H”
+
+“Moneyline”
+
+“Match Winner”
+
+5) Aliases (the part that always matters)
+
+Add a small alias table per league:
+
+AFL: “GWS” ↔ “Greater Western Sydney Giants”, “Brisbane” ↔ “Brisbane Lions”, etc.
+
+NRL: “Sea Eagles” ↔ “Manly Warringah Sea Eagles”, “Roosters” ↔ “Sydney Roosters”, etc.
+
+NBL: “36ers” ↔ “Adelaide 36ers”, etc.
+
+One GUI guardrail you should enable for AU soccer
+
+Since you’re expanding into AU markets, add a league metadata flag like market_mode = "2way" | "3way".
+
+If user selects A-League while in 2-way mode: show a warning and disable “save picks”.
+
+This prevents confusing “empty” or misleading outputs.

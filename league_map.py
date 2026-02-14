@@ -8,6 +8,11 @@ LEAGUE_MAP = {
     "WTA Tennis": "WTA",
     "College Football": "College-Football",
     "College Basketball": "College-Basketball",
+    "AFL": "AFL",
+    "NRL": "NRL",
+    "NBL": "NBL",
+    "Super Rugby": "Super-Rugby",
+    "A-League": "A-League",
     "UFC": "UFC",
 }
 
@@ -18,12 +23,17 @@ TWO_OUTCOME_LEAGUES = [
     "MLB",
     "ATP Tennis",
     "WTA Tennis",
+    "AFL",
+    "NRL",
+    "NBL",
+    "Super Rugby",
     "College Football",
     "College Basketball",
 ]
 
 EXPERIMENTAL_LEAGUES = [
     "Champions League",
+    "A-League",
     "UFC",
 ]
 
@@ -32,13 +42,18 @@ _SEPARATOR = "\u2014 Experimental \u2014"
 LEAGUE_SPORT = {
     "NBA": "Basketball",
     "College Basketball": "Basketball",
+    "NBL": "Basketball",
     "NFL": "Football",
     "College Football": "Football",
     "NHL": "Hockey",
     "MLB": "Baseball",
     "ATP Tennis": "Tennis",
     "WTA Tennis": "Tennis",
+    "AFL": "Aussie Rules",
+    "NRL": "Rugby League",
+    "Super Rugby": "Rugby Union",
     "Champions League": "Soccer",
+    "A-League": "Soccer",
     "UFC": "MMA",
 }
 
