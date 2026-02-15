@@ -10,6 +10,7 @@ from odds_fetch import get_fetch_errors, get_fatal_error, get_odds_source
 from stats_provider import get_fetch_failure_count, get_http_429_count, get_http_5xx_count, get_http_404_count, get_last_status_code
 from features import elo_win_prob
 from league_map import is_two_outcome
+from mapper import _name_score
 
 
 def show_diagnostics(
@@ -84,6 +85,27 @@ def show_diagnostics(
             )
 
 
+def _diagnose_unmatched(
+    unmatched_fixtures: List[Dict[str, Any]],
+    unmatched_odds: List[Dict[str, Any]],
+) -> str:
+    if not unmatched_fixtures or not unmatched_odds:
+        return "coverage_gap"
+    best_min = 0
+    for uf in unmatched_fixtures[:10]:
+        for uo in unmatched_odds[:10]:
+            h_score = _name_score(uf.get("home", ""), uo.get("home", ""))
+            a_score = _name_score(uf.get("away", ""), uo.get("away", ""))
+            pair_min = min(h_score, a_score)
+            h_flip = _name_score(uf.get("home", ""), uo.get("away", ""))
+            a_flip = _name_score(uf.get("away", ""), uo.get("home", ""))
+            pair_min_flip = min(h_flip, a_flip)
+            best_min = max(best_min, pair_min, pair_min_flip)
+    if best_min >= 55:
+        return "naming"
+    return "coverage_gap"
+
+
 def explain_empty_run(
     odds_fetched: int,
     odds_with_lines: Optional[int],
@@ -92,6 +114,8 @@ def explain_empty_run(
     min_edge: float,
     odds_range: tuple,
     league_label: str,
+    unmatched_fixtures: Optional[List[Dict[str, Any]]] = None,
+    unmatched_odds: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     if odds_fetched == 0:
         st.info(
@@ -109,11 +133,21 @@ def explain_empty_run(
             "The schedule may not be published yet for this league window."
         )
     elif matched is not None and matched == 0:
-        st.warning(
-            f"Found {fixtures_fetched} fixture(s) and {odds_fetched} odds event(s), but could not "
-            "match any of them together. Team/player names likely differ between sources. "
-            "Check the **Unmatched Samples** section below for details."
+        reason = _diagnose_unmatched(
+            unmatched_fixtures or [], unmatched_odds or []
         )
+        if reason == "naming":
+            st.warning(
+                f"Found {fixtures_fetched} fixture(s) and {odds_fetched} odds event(s), but could not "
+                "match any of them together. Team/player names likely differ between sources. "
+                "Check the **Unmatched Samples** section below for details."
+            )
+        else:
+            st.info(
+                f"Found {fixtures_fetched} fixture(s) and {odds_fetched} odds event(s), but they "
+                "cover different rounds/dates. The fixtures source may not have published these "
+                "matches yet (common for far-ahead rounds). Try again closer to game day."
+            )
     else:
         edge_pct = min_edge * 100
         st.info(
@@ -129,6 +163,7 @@ def show_unmatched_samples(
 ) -> None:
     if not unmatched_fixtures and not unmatched_odds:
         return
+    reason = _diagnose_unmatched(unmatched_fixtures, unmatched_odds)
     with st.expander("Unmatched samples (debug mapping issues)", expanded=False):
         if unmatched_fixtures:
             st.markdown("**Fixtures without matching odds** (top 10)")
@@ -142,9 +177,15 @@ def show_unmatched_samples(
             for o in unmatched_odds:
                 rows.append({"Home": o["home"], "Away": o["away"], "Time": o["time"]})
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
-        st.caption(
-            "If team names look similar but don't match, aliases may need to be added to mapper.py."
-        )
+        if reason == "naming":
+            st.caption(
+                "Team names look similar but don't match — aliases may need to be added to mapper.py."
+            )
+        else:
+            st.caption(
+                "These appear to be different rounds/dates. The fixtures source may not have "
+                "published these matches yet — this is normal for far-ahead rounds."
+            )
 
 
 def show_harvest_games(harvest_games: List[Dict[str, Any]]) -> None:

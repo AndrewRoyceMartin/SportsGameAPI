@@ -421,9 +421,11 @@ def _run_pipeline(
 
         if not matched:
             progress.empty()
+            unmatched_fx, unmatched_odds = get_unmatched(upcoming, harvest_games, [])
             explain_empty_run(
                 len(harvest_games), games_with_odds, len(upcoming), 0,
                 min_edge, odds_range, league_label,
+                unmatched_fixtures=unmatched_fx, unmatched_odds=unmatched_odds,
             )
             show_diagnostics(
                 odds_fetched=len(harvest_games),
@@ -431,7 +433,6 @@ def _run_pipeline(
                 fixtures_fetched=len(upcoming),
                 matched=0,
             )
-            unmatched_fx, unmatched_odds = get_unmatched(upcoming, harvest_games, [])
             show_unmatched_samples(unmatched_fx, unmatched_odds)
             show_harvest_games(harvest_games)
             return
