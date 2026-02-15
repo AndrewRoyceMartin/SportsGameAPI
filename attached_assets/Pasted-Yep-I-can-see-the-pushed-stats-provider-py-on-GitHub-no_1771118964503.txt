@@ -1,0 +1,65 @@
+Yep — I can see the pushed stats_provider.py on GitHub now.
+
+And it confirms why your AFL/NRL matching is still failing:
+
+What’s still wrong in the live GitHub file
+1) AFL/NRL preseason is still being blocked
+
+Your _TOURNAMENT_DENY includes "preseason" / "pre-season" and _parse_game() applies it unconditionally:
+
+if any(deny in league_lower for deny in _TOURNAMENT_DENY):
+    return None
+
+
+So AFL/NRL preseason games will still get filtered out (fixtures fetched becomes 0 or very low), even though Sportsbet has odds.
+
+2) NBL filter is still too broad
+
+NBL route accept is ["nbl", "australia"] and _matches_league() is just any(pat in gl for pat in accept). That can still match a lot of non-Australian “NBL” leagues depending on how SofaScore labels them.
+
+Fix it cleanly (exact patch)
+A) Add a flag to bypass tournament deny per league
+1) Update _LeagueRoute
+@dataclass
+class _LeagueRoute:
+    sport: str
+    accept: list
+    skip_tournament_deny: bool = False
+
+2) Set flags in _LEAGUE_ROUTING
+"AFL": _LeagueRoute(sport="aussie-rules", accept=["afl", "australian football"], skip_tournament_deny=True),
+"NRL": _LeagueRoute(sport="rugby", accept=["nrl", "national rugby league"], skip_tournament_deny=True),
+"NBL": _LeagueRoute(sport="basketball", accept=["nbl"], skip_tournament_deny=False),
+
+B) Pass skip_tournament_deny into _parse_game
+3) Change _parse_game signature and deny check
+def _parse_game(ev: Dict[str, Any], *, skip_tournament_deny: bool = False) -> Optional[Game]:
+    ...
+    if not skip_tournament_deny and any(deny in league_lower for deny in _TOURNAMENT_DENY):
+        return None
+
+4) Change _collect_games to pass the flag
+game = _parse_game(ev, skip_tournament_deny=route.skip_tournament_deny)
+
+Tighten NBL matching (avoid “Czechia NBL”, “Uganda NBL Women”, etc.)
+Best approach: special-case NBL in _matches_league
+
+Change _matches_league to accept a league_key:
+
+def _matches_league(game_league_str: str, accept: list, *, league_key: str = "") -> bool:
+    gl = game_league_str.lower()
+
+    if league_key == "NBL":
+        # Your league string includes "(Australia)" already, so leverage it.
+        return "nbl" in gl and "(australia)" in gl and "women" not in gl
+
+    return any(pat in gl for pat in accept)
+
+
+Then in _collect_games, call it like this:
+
+if league and not _matches_league(game.league, route.accept, league_key=league):
+    continue
+
+
+This is much safer than growing a giant deny list.
