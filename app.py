@@ -58,13 +58,24 @@ def main():
             options=ALL_SPORTS,
             index=0,
             help="Filter leagues by sport category.",
+            key="sport_select",
         )
         sport_filter = SPORT_DISPLAY_TO_KEY.get(sport_display, "All")
+
+        if "prev_sport" not in st.session_state:
+            st.session_state.prev_sport = sport_filter
+        if st.session_state.prev_sport != sport_filter:
+            st.session_state.prev_sport = sport_filter
+            st.session_state.pop("league_select", None)
+            st.session_state.pop("league_search", None)
+            st.rerun()
+
         league_search = st.text_input(
             "Search leagues",
             value="",
             placeholder="Type to filter...",
             help="Filter leagues by name.",
+            key="league_search",
         )
 
         leagues = available_leagues(sport_filter=sport_filter, search=league_search)
@@ -78,7 +89,7 @@ def main():
             "League",
             options=league_options,
             index=default_idx,
-            key=f"league_select_{sport_filter}",
+            key="league_select",
             help="Choose a league to scan, or 'All' for multi-league scan.",
         )
 
