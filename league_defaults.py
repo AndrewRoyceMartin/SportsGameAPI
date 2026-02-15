@@ -28,6 +28,26 @@ def apply_profile(defaults: dict, profile: str) -> dict:
     return d
 
 
+ELO_PARAMS = {
+    "NBA": {"k": 25, "home_adv": 70, "scale": 400, "recency_half_life": 45},
+    "NHL": {"k": 20, "home_adv": 35, "scale": 400, "recency_half_life": 45},
+    "NFL": {"k": 30, "home_adv": 50, "scale": 350, "recency_half_life": 0},
+    "College Basketball": {"k": 25, "home_adv": 80, "scale": 400, "recency_half_life": 45},
+    "College Football": {"k": 30, "home_adv": 60, "scale": 350, "recency_half_life": 0},
+    "AFL": {"k": 30, "home_adv": 50, "scale": 400, "recency_half_life": 60},
+    "NRL": {"k": 25, "home_adv": 40, "scale": 400, "recency_half_life": 45},
+    "NBL": {"k": 25, "home_adv": 60, "scale": 400, "recency_half_life": 45},
+    "Champions League": {"k": 20, "home_adv": 45, "scale": 450, "recency_half_life": 60},
+    "UFC": {"k": 30, "home_adv": 0, "scale": 400, "recency_half_life": 90},
+}
+
+DEFAULT_ELO = {"k": 20, "home_adv": 65, "scale": 400, "recency_half_life": 45}
+
+
+def get_elo_params(league: str) -> dict:
+    return ELO_PARAMS.get(league, DEFAULT_ELO)
+
+
 DEFAULTS = {
     "NBA": {
         "min_edge": 3,

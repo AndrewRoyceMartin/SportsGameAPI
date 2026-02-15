@@ -1,0 +1,154 @@
+Good — that methodology is solid, and the limitations you listed are exactly where the accuracy/calibration gains live. The trick is to improve probabilities (calibration + separation) while keeping the model lightweight.
+
+Here’s the highest-impact upgrade path, in the order I’d implement it.
+
+1) Make home advantage league-specific (and tune it)
+
+Right now you have “a fixed constant”. That’s almost always leaving accuracy on the table.
+
+Do this:
+
+Add HOME_ADV[league] (Elo points)
+
+Tune it by backtest to maximise Brier score (probability accuracy) or log loss, not raw accuracy.
+
+Typical starting ranges to grid-search:
+
+AFL/NRL/NBL: 20–90
+
+NBA: 30–100
+
+NHL: 10–70
+
+Why it helps: home advantage varies massively across leagues and seasons; a wrong constant miscalibrates every probability.
+
+2) Tune K per league + make it dynamic by games played
+
+A fixed K is a compromise between stability and responsiveness.
+
+A) League K tuning
+
+Grid search:
+
+K ∈ {10, 15, 20, 25, 30, 35, 40}
+
+B) Dynamic K (big gain early season)
+
+Track games played per team:
+
+K_eff = K * 1.8 if team has < 10 games
+
+K_eff = K * 1.3 if < 20 games
+
+else K_eff = K
+
+Why it helps: ratings adapt faster when you know less, and stabilize when you know more. Improves both accuracy and confidence separation.
+
+3) Add margin-of-victory weighting (where scores matter)
+
+For AFL/NBL/NBA (and often NRL), Elo updates should reflect how decisive the win was.
+
+A standard approach:
+
+mov = abs(home_score - away_score)
+
+mov_mult = log(mov + 1) * (2.2 / (0.001 * abs(elo_diff) + 2.2))
+
+K_eff = K_eff * mov_mult
+
+Why it helps: blowouts carry more information than coin-flip wins, so the rating moves faster toward truth.
+
+4) Add recency weighting (simple + very effective)
+
+Your training window treats 90 days ago = yesterday. That harms calibration and bucket separation.
+
+Simplest version: decay K by game age in the training build:
+
+Weight games by w = exp(-days_ago / half_life)
+
+Use K_eff = K_eff * w while building ratings from training history (and optionally in test rolling updates too).
+
+Start with half-life:
+
+30–45 days for high-variance leagues
+
+60–90 days for stable leagues
+
+Why it helps: the model becomes more “form-aware” without needing extra features.
+
+5) Split ratings: home-strength and away-strength (small complexity, big calibration gain)
+
+Instead of one rating per team, maintain:
+
+R_home[team]
+
+R_away[team]
+
+When predicting:
+
+compare R_home[home] vs R_away[away]
+
+When updating:
+
+update those two ratings only.
+
+Why it helps: some teams systematically over/underperform at home/away, which your current model can’t represent.
+
+6) Calibrate probabilities after Elo (this is the calibration fix)
+
+Even “perfect” Elo ratings can be miscalibrated because the logistic denominator (your “400”) isn’t universal.
+
+Option A: tune the Elo scale (best first step)
+
+Generalize:
+
+p_home = 1 / (1 + 10 ** ((r_away - r_home) / SCALE))
+Grid search SCALE ∈ {250, 300, 350, 400, 450, 500, 600} per league.
+
+This alone often fixes “70% doesn’t win 70%”.
+
+Option B: Platt scaling / isotonic regression (if you want stronger calibration)
+
+Use the test predictions (or better: CV folds) and fit:
+
+Platt: logistic regression on logit(p)
+
+Isotonic: non-param monotonic calibration
+
+Report Brier score + reliability plot per bucket.
+
+Why it helps: you explicitly force “predicted probability ≈ observed frequency”.
+
+7) Change what you optimise: add proper scoring rules and confidence-lift
+
+If you only chase accuracy, you’ll plateau quickly.
+
+Add these backtest outputs:
+
+Brier score (lower is better)
+
+Log loss (lower is better)
+
+Bucket lift: (Accuracy at 70%+) − (Accuracy overall)
+
+Top-N accuracy (top 10 by confidence / top 10 by edge)
+
+Then tune parameters to:
+
+minimise Brier/log loss
+
+maximise bucket lift
+
+That directly targets “better calibration” and “more separation”.
+
+A practical “do this now” plan
+
+If you want the fastest improvement with minimal code churn:
+
+Implement per-league grid search for: HOME_ADV, K, SCALE
+
+Add dynamic K by games played
+
+Add recency weighting in training build
+
+Re-run backtest and compare: accuracy and Brier + bucket lift

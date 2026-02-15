@@ -401,7 +401,7 @@ def _render_all_leagues_picks(
                 all_matched += len(matched)
                 if not matched:
                     continue
-                bets = compute_values(matched, elo_ratings, min_edge, odds_range)
+                bets = compute_values(matched, elo_ratings, min_edge, odds_range, league=league)
                 if three_outcome and bets:
                     bets = dedup_best_side(bets)
                 for b in bets:
@@ -545,7 +545,7 @@ def _run_pipeline(
             return [], run_data
 
         progress.progress(85, text="Computing value bets...")
-        value_bets = compute_values(matched, elo_ratings, min_edge, odds_range)
+        value_bets = compute_values(matched, elo_ratings, min_edge, odds_range, league=league_label)
 
         if dedup_per_match and value_bets:
             value_bets = dedup_best_side(value_bets)

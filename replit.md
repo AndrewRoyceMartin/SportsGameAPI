@@ -11,7 +11,7 @@ A Streamlit-based sports prediction application that finds value bets by compari
 - `apify_client.py` - Unified Apify REST client (run actor, get dataset items)
 - `stats_provider.py` - SofaScore API client with Game dataclass, multi-sport support (football, basketball, ice-hockey, american-football, baseball, tennis, mma)
 - `league_map.py` - Maps league labels to SofaScore filters and Harvest actor league keys; groups leagues into Production vs Experimental; LEAGUE_SPORT mapping for sport filter UI
-- `league_defaults.py` - Per-league default filter values (min edge, odds range, history/lookahead days, top N); RUN_PROFILES (Conservative/Balanced/Aggressive) with apply_profile()
+- `league_defaults.py` - Per-league default filter values (min edge, odds range, history/lookahead days, top N); RUN_PROFILES (Conservative/Balanced/Aggressive) with apply_profile(); ELO_PARAMS per-league Elo tuning (K, home_adv, scale, recency_half_life)
 - `sportsbet_odds.py` - Sportsbet AU odds parser: extracts Head to Head markets, parses AU datetimes, transforms to Harvest-compatible format
 - `odds_fetch.py` - Odds fetching with provider routing (Harvest for US leagues, Sportsbet for AU leagues)
 - `odds_math.py` - American-to-decimal conversion, implied probability calculation
@@ -19,7 +19,7 @@ A Streamlit-based sports prediction application that finds value bets by compari
 - `mapper.py` - Match Game fixtures to harvest odds events (time window + fuzzy team names + alias expansion); handles "Surname, Name" tennis format
 - `value_engine.py` - Core math: implied probability, edge, expected value calculations
 - `store.py` - SQLite store for picks, odds-at-time, and results tracking
-- `features.py` - Elo rating system with home advantage
+- `features.py` - Elo rating system with per-league tuning (K, home advantage, scale), dynamic K by games played, margin-of-victory weighting, recency decay
 - `.streamlit/config.toml` - Streamlit server configuration (port 5000)
 
 ## Supported Leagues
@@ -70,7 +70,7 @@ SofaScore provides fixtures/results via sport-specific endpoints (basketball, ic
 15. 3-outcome leagues: dedup best side per match, require explicit save opt-in, tag as experimental
 
 ## UI Features
-- **4-tab layout**: Picks (card-based shortlist), Explore (sortable table), Diagnostics (pipeline stats), Saved Picks (history)
+- **5-tab layout**: Picks (card-based shortlist), Explore (sortable table), Backtest (model accuracy testing), Diagnostics (pipeline stats), Saved Picks (history)
 - **Best Bets Mode**: Toggle (default ON) that auto-sorts by quality, limits to top 10, locks defaults
 - **Bet Quality scoring**: Composite 0-100 score from edge (35%), EV (25%), confidence (20%), odds sanity (20%)
 - **Quality tiers**: A (80+) = Strong, B (60-79) = Good, C (<60) = Fair/Weak
@@ -93,11 +93,19 @@ SofaScore provides fixtures/results via sport-specific endpoints (basketball, ic
 - `APIFY_TOKEN` - Apify API token (used for harvest odds actor)
 - Centralized in `config_env.py`; startup audit surfaces missing/stale secrets in diagnostics
 
+## Elo Model Features
+- **Per-league parameters**: K-factor, home advantage, Elo scale, recency half-life tuned per league via ELO_PARAMS
+- **Dynamic K**: Teams with <10 games get K*1.8, <20 games get K*1.3, stabilizing as more data accumulates
+- **Margin-of-victory weighting**: Blowouts update Elo more than close games using log(MOV+1) with auto-correction for rating gaps
+- **Recency decay**: Older training games have reduced K via exponential decay with configurable half-life per league
+- **Backtest scoring**: Brier score, log loss, bucket lift (confident vs overall accuracy delta)
+
 ## UI Tabs
 1. **Picks** - Card-based shortlist of top value bets with quality badges and save controls
 2. **Explore** - Full sortable table with all value bets, column toggles, sort presets
-3. **Diagnostics** - Pipeline stats, unmatched samples, odds source info, error details
-4. **Saved Picks** - History of saved picks with P/L tracking
+3. **Backtest** - Test Elo model against historical results with accuracy, Brier score, log loss, bucket lift metrics
+4. **Diagnostics** - Pipeline stats, unmatched samples, odds source info, error details
+5. **Saved Picks** - History of saved picks with P/L tracking
 
 ## Running
 ```

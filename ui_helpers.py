@@ -586,6 +586,33 @@ def render_backtest_results(bt: Dict[str, Any]) -> None:
         help=f"Accuracy when the model was 60%+ confident. {bt['confident_correct']}/{bt['confident_total']} correct.",
     )
 
+    s1, s2, s3 = st.columns(3)
+    brier = bt.get("brier_score", 0)
+    ll = bt.get("log_loss", 0)
+    bl = bt.get("bucket_lift")
+    s1.metric(
+        "Brier Score", f"{brier:.4f}",
+        help="Measures probability accuracy (lower is better). 0.25 = coin flip baseline. Below 0.20 is good.",
+    )
+    s2.metric(
+        "Log Loss", f"{ll:.4f}",
+        help="Penalises confident wrong predictions heavily (lower is better). 0.693 = coin flip baseline.",
+    )
+    s3.metric(
+        "Bucket Lift", f"{bl:+.1%}" if bl is not None else "N/A",
+        help="How much better high-confidence picks (60%+) perform vs overall. Positive = model separates well.",
+    )
+
+    ep = bt.get("elo_params")
+    if ep:
+        with st.expander("Elo Parameters Used"):
+            st.markdown(
+                f"**K:** {ep['k']}  &nbsp;|&nbsp;  "
+                f"**Home Adv:** {ep['home_adv']}  &nbsp;|&nbsp;  "
+                f"**Scale:** {ep['scale']}  &nbsp;|&nbsp;  "
+                f"**Recency Half-life:** {ep['recency_half_life'] or 'Off'} days"
+            )
+
     st.divider()
 
     draws = bt.get("draws", 0)

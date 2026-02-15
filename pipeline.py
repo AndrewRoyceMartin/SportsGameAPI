@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from datetime import date, timedelta
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -9,6 +10,7 @@ from odds_fetch import fetch_odds_for_window
 from odds_extract import extract_moneylines, consensus_decimal
 from mapper import match_games_to_odds, _parse_iso
 from value_engine import implied_probability, edge, expected_value
+from league_defaults import get_elo_params
 
 
 def _game_to_elo_dict(g: Game) -> dict:
@@ -23,9 +25,17 @@ def _game_to_elo_dict(g: Game) -> dict:
 
 def fetch_elo_ratings(league_label: str, history_days: int) -> Tuple[dict, int]:
     results = get_results_history(league=league_label, since_days=history_days)
-    elo_dicts = [_game_to_elo_dict(g) for g in results]
-    ratings = build_elo_ratings(elo_dicts) if elo_dicts else {}
-    return ratings, len(results)
+    elo_dicts = [
+        _game_to_elo_dict(g) for g in results
+        if g.home_score is not None and g.away_score is not None
+    ]
+    ep = get_elo_params(league_label)
+    ratings = build_elo_ratings(
+        elo_dicts,
+        k=ep["k"], home_adv=ep["home_adv"],
+        scale=ep["scale"], recency_half_life=ep["recency_half_life"],
+    ) if elo_dicts else {}
+    return ratings, len(elo_dicts)
 
 
 def fetch_harvest_odds(harvest_key: str, lookahead_days: int, league_label: str = "") -> List[Dict[str, Any]]:
@@ -115,7 +125,9 @@ def compute_values(
     elo_ratings: dict,
     min_edge: float,
     odds_range: Tuple[float, float],
+    league: str = "",
 ) -> List[Dict[str, Any]]:
+    ep = get_elo_params(league) if league else {"home_adv": 65, "scale": 400}
     value_bets = []
 
     for m in matched:
@@ -132,7 +144,7 @@ def compute_values(
 
         r_home = float(elo_ratings.get(fx.home, 1500.0))
         r_away = float(elo_ratings.get(fx.away, 1500.0))
-        p_home = elo_win_prob(r_home, r_away)
+        p_home = elo_win_prob(r_home, r_away, home_adv=ep["home_adv"], scale=ep["scale"])
         p_away = 1.0 - p_home
 
         for side, odds_dec, model_p, selection_name in [
@@ -181,6 +193,7 @@ def run_backtest(
     history_days: int = 120,
     test_days: int = 30,
 ) -> Dict[str, Any]:
+    ep = get_elo_params(league_label)
     total_days = history_days + test_days
     all_results = get_results_history(league=league_label, since_days=total_days)
 
@@ -204,7 +217,11 @@ def run_backtest(
         _game_to_elo_dict(g) for g in train_games
         if g.home_score is not None and g.away_score is not None
     ]
-    ratings = build_elo_ratings(train_dicts)
+
+    elo_kwargs = dict(
+        k=ep["k"], home_adv=ep["home_adv"],
+        scale=ep["scale"], recency_half_life=ep["recency_half_life"],
+    )
 
     results = []
     correct = 0
@@ -212,6 +229,8 @@ def run_backtest(
     draws = 0
     confident_correct = 0
     confident_total = 0
+    brier_sum = 0.0
+    log_loss_sum = 0.0
 
     rolling_dicts = list(train_dicts)
 
@@ -219,17 +238,18 @@ def run_backtest(
         if g.home_score is None or g.away_score is None:
             continue
 
-        current_ratings = build_elo_ratings(rolling_dicts)
+        current_ratings = build_elo_ratings(rolling_dicts, **elo_kwargs)
 
         r_home = float(current_ratings.get(g.home, 1500.0))
         r_away = float(current_ratings.get(g.away, 1500.0))
-        p_home = elo_win_prob(r_home, r_away)
+        p_home = elo_win_prob(r_home, r_away, home_adv=ep["home_adv"], scale=ep["scale"])
         p_away = 1.0 - p_home
 
         predicted_winner = g.home if p_home >= 0.5 else g.away
         predicted_prob = max(p_home, p_away)
 
         is_draw = g.home_score == g.away_score
+        actual_outcome = 0.5
 
         if is_draw:
             actual_winner = "Draw"
@@ -238,9 +258,11 @@ def run_backtest(
         elif g.home_score > g.away_score:
             actual_winner = g.home
             is_correct = (predicted_winner == g.home)
+            actual_outcome = 1.0
         else:
             actual_winner = g.away
             is_correct = (predicted_winner == g.away)
+            actual_outcome = 0.0
 
         if is_correct is not None:
             total += 1
@@ -250,6 +272,14 @@ def run_backtest(
                 confident_total += 1
                 if is_correct:
                     confident_correct += 1
+
+            brier_sum += (p_home - actual_outcome) ** 2
+
+            p_clipped = max(1e-10, min(1.0 - 1e-10, p_home))
+            log_loss_sum -= (
+                actual_outcome * math.log(p_clipped)
+                + (1.0 - actual_outcome) * math.log(1.0 - p_clipped)
+            )
 
         results.append({
             "date": g.start_time_utc.strftime("%Y-%m-%d"),
@@ -271,6 +301,12 @@ def run_backtest(
 
     accuracy = correct / total if total > 0 else 0
     confident_accuracy = confident_correct / confident_total if confident_total > 0 else 0
+    brier_score = brier_sum / total if total > 0 else 0
+    log_loss = log_loss_sum / total if total > 0 else 0
+
+    overall_acc = accuracy
+    confident_acc = confident_accuracy
+    bucket_lift = (confident_acc - overall_acc) if confident_total > 0 else None
 
     return {
         "league": league_label,
@@ -282,6 +318,10 @@ def run_backtest(
         "confident_total": confident_total,
         "confident_correct": confident_correct,
         "confident_accuracy": confident_accuracy,
+        "brier_score": brier_score,
+        "log_loss": log_loss,
+        "bucket_lift": bucket_lift,
+        "elo_params": ep,
         "games": results,
     }
 
