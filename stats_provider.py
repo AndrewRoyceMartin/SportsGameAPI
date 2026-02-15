@@ -33,7 +33,7 @@ DEFAULT_BACKOFF_CAP = 6.0
 class _LeagueRoute:
     sport: str
     accept: list
-    skip_deny: bool = False
+    skip_tournament_deny: bool = False
 
 
 _LEAGUE_ROUTING = {
@@ -48,9 +48,9 @@ _LEAGUE_ROUTING = {
     ),
     "Champions League": _LeagueRoute(sport="football", accept=["champions league", "ucl"]),
     "UFC": _LeagueRoute(sport="mma", accept=["ufc"]),
-    "AFL": _LeagueRoute(sport="aussie-rules", accept=["afl"], skip_deny=True),
-    "NRL": _LeagueRoute(sport="rugby", accept=["nrl"], skip_deny=True),
-    "NBL": _LeagueRoute(sport="basketball", accept=["nbl"], skip_deny=True),
+    "AFL": _LeagueRoute(sport="aussie-rules", accept=["afl"], skip_tournament_deny=True),
+    "NRL": _LeagueRoute(sport="rugby", accept=["nrl"], skip_tournament_deny=True),
+    "NBL": _LeagueRoute(sport="basketball", accept=["nbl"]),
 }
 
 
@@ -64,19 +64,13 @@ def _route_for_league(league: str) -> _LeagueRoute:
     return _LeagueRoute(sport="football", accept=[league.lower()])
 
 
-_NBL_REQUIRE = ["(australia)"]
-_NBL_DENY = ["women", "wnbl"]
-
 def _matches_league(game_league_str: str, accept: list, league_key: str = "") -> bool:
     gl = game_league_str.lower()
-    if not any(pat in gl for pat in accept):
-        return False
+
     if league_key == "NBL":
-        if not any(r in gl for r in _NBL_REQUIRE):
-            return False
-        if any(d in gl for d in _NBL_DENY):
-            return False
-    return True
+        return "(australia)" in gl and "nbl" in gl and "women" not in gl and "wnbl" not in gl
+
+    return any(pat in gl for pat in accept)
 
 
 def _sleep_backoff(attempt: int, base: float, cap: float) -> None:
@@ -225,7 +219,7 @@ _TOURNAMENT_DENY = [
 ]
 
 
-def _parse_game(ev: Dict[str, Any], skip_deny: bool = False) -> Optional[Game]:
+def _parse_game(ev: Dict[str, Any], *, skip_tournament_deny: bool = False) -> Optional[Game]:
     try:
         status_obj = ev.get("status", {})
         status_type = (
@@ -260,7 +254,7 @@ def _parse_game(ev: Dict[str, Any], skip_deny: bool = False) -> Optional[Game]:
         league = f"{tournament_name} {tournament_slug} {unique_name} {unique_slug} ({country})".strip()
 
         league_lower = league.lower()
-        if not skip_deny and any(deny in league_lower for deny in _TOURNAMENT_DENY):
+        if not skip_tournament_deny and any(deny in league_lower for deny in _TOURNAMENT_DENY):
             return None
 
         if status_type == "finished":
@@ -328,7 +322,7 @@ def _collect_games(
             if ev_id is not None and ev_id in seen_ids:
                 continue
 
-            game = _parse_game(ev, skip_deny=route.skip_deny)
+            game = _parse_game(ev, skip_tournament_deny=route.skip_tournament_deny)
             if game and game.status == wanted_status:
                 if league and not _matches_league(game.league, route.accept, league_key=league):
                     continue
