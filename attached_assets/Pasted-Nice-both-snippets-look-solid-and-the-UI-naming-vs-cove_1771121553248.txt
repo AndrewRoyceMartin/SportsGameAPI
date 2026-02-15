@@ -1,0 +1,133 @@
+Nice — both snippets look solid, and the UI “naming vs coverage gap” heuristic is exactly the right direction.
+
+Two actionable improvements will make this much more accurate (and prevent false “coverage gap” when it’s actually a name/time issue).
+
+1) Fix _diagnose_unmatched() to use your real odds/fixture shapes
+
+Right now it calls:
+
+_name_score(uf.get("home", ""), uo.get("home", ""))
+
+
+…but your real objects are:
+
+fixtures: likely {"home": ..., "away": ..., "time": ...} ✅
+
+odds: you’re building them from harvest format, which is not home/away, it’s homeTeam.mediumName, awayTeam.mediumName, scheduledTime.
+
+So _diagnose_unmatched() may be scoring blank strings for odds and defaulting to coverage_gap incorrectly.
+
+Patch _diagnose_unmatched() to read either format
+
+Drop in helper getters:
+
+def _get_home(x: Dict[str, Any]) -> str:
+    return (
+        x.get("home")
+        or x.get("homeTeam", {}).get("mediumName")
+        or x.get("homeTeam", {}).get("name")
+        or ""
+    )
+
+def _get_away(x: Dict[str, Any]) -> str:
+    return (
+        x.get("away")
+        or x.get("awayTeam", {}).get("mediumName")
+        or x.get("awayTeam", {}).get("name")
+        or ""
+    )
+
+
+Then change:
+
+h_score = _name_score(uf.get("home", ""), uo.get("home", ""))
+a_score = _name_score(uf.get("away", ""), uo.get("away", ""))
+...
+h_flip = _name_score(uf.get("home", ""), uo.get("away", ""))
+a_flip = _name_score(uf.get("away", ""), uo.get("home", ""))
+
+
+to:
+
+uf_h, uf_a = _get_home(uf), _get_away(uf)
+uo_h, uo_a = _get_home(uo), _get_away(uo)
+
+h_score = _name_score(uf_h, uo_h)
+a_score = _name_score(uf_a, uo_a)
+pair_min = min(h_score, a_score)
+
+h_flip = _name_score(uf_h, uo_a)
+a_flip = _name_score(uf_a, uo_h)
+pair_min_flip = min(h_flip, a_flip)
+
+
+Result: your “naming vs coverage gap” call becomes reliable across both providers.
+
+2) Add a second heuristic: time proximity (prevents weird edge cases)
+
+Sometimes names score high across unrelated matches (especially with generic names), and you’ll mislabel as “naming”.
+
+You already have times available (uf["time"] and uo["time"]), so add a cheap “same-day-ish” check.
+
+Add this to _diagnose_unmatched()
+
+If you can parse both times, require at least one pair to be within e.g. 36 hours to call it “naming”.
+
+Pseudo:
+
+best_min = 0
+best_time_diff_hours = None
+
+for uf in unmatched_fixtures[:10]:
+    uf_dt = _parse_iso(uf.get("time", ""))  # or your existing parse
+    for uo in unmatched_odds[:10]:
+        uo_dt = _parse_iso(uo.get("time", ""))  # same parse
+        ...
+        if pair_min_candidate > best_min:
+            best_min = pair_min_candidate
+            if uf_dt and uo_dt:
+                best_time_diff_hours = abs((uf_dt - uo_dt).total_seconds()) / 3600
+
+
+Decision:
+
+if best_min >= 55 and (best_time_diff_hours is None or best_time_diff_hours <= 36) → "naming"
+
+else "coverage_gap"
+
+That keeps your messages trustworthy.
+
+3) Your Sportsbet harvest event dict builder is OK
+
+This is fine:
+
+scheduled_time = start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+As long as start_utc is actually UTC (and your Sportsbet parser converts correctly). You’ve already widened AU time window to handle offsets, so you’re protected even if there’s a mismatch by several hours.
+
+4) One more small UI polish (recommended)
+
+Rename the expander title dynamically:
+
+"Unmatched samples (debug mapping issues)" is accurate for naming problems
+
+but misleading for coverage gaps
+
+So:
+
+if reason == "naming": keep current title
+
+else: "Unmatched samples (different rounds/dates)"
+
+This stops you from “alias-chasing” when the real issue is fixture coverage.
+
+Exact commit plan
+
+Patch ui_helpers.py with _get_home/_get_away + time heuristic.
+
+Commit + push:
+
+git add ui_helpers.py
+git commit -m "Improve unmatched diagnostics: handle provider shapes and time proximity"
+git push origin main

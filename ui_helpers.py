@@ -10,7 +10,7 @@ from odds_fetch import get_fetch_errors, get_fatal_error, get_odds_source
 from stats_provider import get_fetch_failure_count, get_http_429_count, get_http_5xx_count, get_http_404_count, get_last_status_code
 from features import elo_win_prob
 from league_map import is_two_outcome
-from mapper import _name_score
+from mapper import _name_score, _parse_iso
 
 
 def show_diagnostics(
@@ -85,6 +85,24 @@ def show_diagnostics(
             )
 
 
+def _get_home(x: Dict[str, Any]) -> str:
+    return (
+        x.get("home")
+        or (x.get("homeTeam") or {}).get("mediumName")
+        or (x.get("homeTeam") or {}).get("name")
+        or ""
+    )
+
+
+def _get_away(x: Dict[str, Any]) -> str:
+    return (
+        x.get("away")
+        or (x.get("awayTeam") or {}).get("mediumName")
+        or (x.get("awayTeam") or {}).get("name")
+        or ""
+    )
+
+
 def _diagnose_unmatched(
     unmatched_fixtures: List[Dict[str, Any]],
     unmatched_odds: List[Dict[str, Any]],
@@ -92,16 +110,31 @@ def _diagnose_unmatched(
     if not unmatched_fixtures or not unmatched_odds:
         return "coverage_gap"
     best_min = 0
+    best_time_diff_hours = None
     for uf in unmatched_fixtures[:10]:
+        uf_h, uf_a = _get_home(uf), _get_away(uf)
+        uf_dt = _parse_iso(uf.get("time", ""))
         for uo in unmatched_odds[:10]:
-            h_score = _name_score(uf.get("home", ""), uo.get("home", ""))
-            a_score = _name_score(uf.get("away", ""), uo.get("away", ""))
+            uo_h, uo_a = _get_home(uo), _get_away(uo)
+            uo_dt = _parse_iso(uo.get("time", ""))
+
+            h_score = _name_score(uf_h, uo_h)
+            a_score = _name_score(uf_a, uo_a)
             pair_min = min(h_score, a_score)
-            h_flip = _name_score(uf.get("home", ""), uo.get("away", ""))
-            a_flip = _name_score(uf.get("away", ""), uo.get("home", ""))
+
+            h_flip = _name_score(uf_h, uo_a)
+            a_flip = _name_score(uf_a, uo_h)
             pair_min_flip = min(h_flip, a_flip)
-            best_min = max(best_min, pair_min, pair_min_flip)
-    if best_min >= 55:
+
+            candidate = max(pair_min, pair_min_flip)
+            if candidate > best_min:
+                best_min = candidate
+                if uf_dt and uo_dt:
+                    best_time_diff_hours = abs((uf_dt - uo_dt).total_seconds()) / 3600
+                else:
+                    best_time_diff_hours = None
+
+    if best_min >= 55 and (best_time_diff_hours is None or best_time_diff_hours <= 36):
         return "naming"
     return "coverage_gap"
 
@@ -164,7 +197,12 @@ def show_unmatched_samples(
     if not unmatched_fixtures and not unmatched_odds:
         return
     reason = _diagnose_unmatched(unmatched_fixtures, unmatched_odds)
-    with st.expander("Unmatched samples (debug mapping issues)", expanded=False):
+    title = (
+        "Unmatched samples (debug mapping issues)"
+        if reason == "naming"
+        else "Unmatched samples (different rounds/dates)"
+    )
+    with st.expander(title, expanded=False):
         if unmatched_fixtures:
             st.markdown("**Fixtures without matching odds** (top 10)")
             rows = []
