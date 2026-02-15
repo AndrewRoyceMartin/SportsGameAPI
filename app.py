@@ -175,7 +175,7 @@ def main():
         lookahead_days = st.slider(
             "Lookahead (days)",
             1,
-            14,
+            28,
             step=1,
             key="lookahead_days",
             disabled=lock_defaults,
