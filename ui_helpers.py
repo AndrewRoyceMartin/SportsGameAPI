@@ -1,6 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta
+import csv
+import io
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
@@ -12,6 +14,8 @@ from stats_provider import get_fetch_failure_count, get_http_429_count, get_http
 from features import elo_win_prob
 from league_map import is_two_outcome
 from mapper import _name_score, _parse_iso
+
+AU_LEAGUES = {"AFL", "NRL", "NBL"}
 
 
 def compute_bet_quality(vb: Dict[str, Any]) -> int:
@@ -364,6 +368,208 @@ def _maturity_badge(min_games: int) -> str:
     return "Early"
 
 
+def _risk_tag(edge_val: float, min_games: int) -> str:
+    if edge_val >= 0.10 and min_games >= 20:
+        return "Low"
+    if edge_val >= 0.05 or min_games >= 10:
+        return "Medium"
+    return "High"
+
+
+def _format_au_time(utc_time_str: str, league: str) -> str:
+    if league not in AU_LEAGUES:
+        return utc_time_str
+    try:
+        clean = utc_time_str.replace(" UTC", "").strip()
+        parts = clean.split(":")
+        if len(parts) == 2:
+            h, m = int(parts[0]), int(parts[1])
+            aedt_h = (h + 11) % 24
+            return f"{aedt_h:02d}:{m:02d} AEDT ({h:02d}:{m:02d} UTC)"
+    except Exception:
+        pass
+    return utc_time_str
+
+
+def compute_quality_breakdown(vb: Dict[str, Any]) -> Dict[str, Any]:
+    edge_val = vb.get("edge", 0)
+    ev = vb.get("ev_per_unit", 0)
+    conf = vb.get("match_confidence", 0)
+    odds = vb.get("odds_decimal", 0)
+    min_games = vb.get("min_games", 999)
+
+    edge_score = min(edge_val / 0.20, 1.0) * 35
+    ev_score = min(max(ev, 0) / 0.30, 1.0) * 25
+    conf_score = min(conf / 100.0, 1.0) * 20
+
+    if 1.5 <= odds <= 4.0:
+        odds_score = 20
+    elif 1.3 <= odds < 1.5 or 4.0 < odds <= 6.0:
+        odds_score = 12
+    elif 1.1 <= odds < 1.3 or 6.0 < odds <= 8.0:
+        odds_score = 6
+    else:
+        odds_score = 2
+
+    if min_games < 10:
+        maturity_penalty = 0.90
+    elif min_games < 20:
+        maturity_penalty = 0.95
+    else:
+        maturity_penalty = 1.0
+
+    return {
+        "edge_score": round(edge_score, 1),
+        "ev_score": round(ev_score, 1),
+        "conf_score": round(conf_score, 1),
+        "odds_score": round(odds_score, 1),
+        "maturity_penalty": maturity_penalty,
+    }
+
+
+def render_quality_mini_bar(vb: Dict[str, Any]) -> None:
+    bd = compute_quality_breakdown(vb)
+    qc1, qc2, qc3, qc4 = st.columns(4)
+    qc1.caption(f"Edge: {bd['edge_score']:.0f}/35")
+    qc2.caption(f"EV: {bd['ev_score']:.0f}/25")
+    qc3.caption(f"Conf: {bd['conf_score']:.0f}/20")
+    qc4.caption(f"Odds: {bd['odds_score']:.0f}/20")
+    if bd["maturity_penalty"] < 1.0:
+        st.caption(f"Maturity penalty: {bd['maturity_penalty']:.0%}")
+
+
+def render_hero_card(vb: Dict[str, Any]) -> None:
+    risk = _risk_tag(vb.get("edge", 0), vb.get("min_games", 0))
+    risk_colors = {"Low": "green", "Medium": "orange", "High": "red"}
+    risk_color = risk_colors.get(risk, "gray")
+    q = vb.get("quality", 0)
+
+    with st.container(border=True):
+        st.markdown("### \U0001f3af Best Bet Right Now")
+        h1, h2, h3, h4, h5 = st.columns(5)
+        h1.metric("Pick", vb["selection"])
+        h2.metric("Odds", f"{vb['odds_decimal']:.2f}")
+        h3.metric("Edge", f"{vb['edge']:.1%}")
+        h4.metric("Model %", f"{vb['model_prob']:.1%}")
+        h5.metric("Quality", f"{q}/100")
+
+        st.markdown(f"Risk: :{risk_color}[**{risk}**]")
+
+        explainer = _build_pick_explainer(vb)
+        st.caption(f"Why: {explainer}")
+
+        model_p = vb.get("model_prob", 0)
+        implied_p = vb.get("implied_prob", 0)
+        edge_val = vb.get("edge", 0)
+        st.markdown(
+            f"**Confidence vs Implied** — Model: {model_p:.0%} | Market implied: {implied_p:.0%} | Edge: +{edge_val:.0%}"
+        )
+
+        st.caption("Show all picks below \u2193")
+
+
+def render_action_strip(run_data: Dict[str, Any]) -> None:
+    value_bets = run_data.get("value_bets", [])
+    value_bets_count = run_data.get("value_bets_count", len(value_bets))
+    odds_fetched = run_data.get("odds_fetched", 0)
+    matched = run_data.get("matched", 0)
+    unmatched_fx = run_data.get("unmatched_fx", [])
+    unmatched_odds = run_data.get("unmatched_odds", [])
+
+    if value_bets_count > 0 and value_bets:
+        mature_count = sum(1 for vb in value_bets if vb.get("min_games", 0) >= 20)
+        st.success(f"{value_bets_count} value bets found — top {mature_count} are Mature teams")
+    elif odds_fetched == 0:
+        st.info("No odds available yet — come back closer to game time")
+    elif matched == 0 and (unmatched_fx or unmatched_odds):
+        reason = _diagnose_unmatched(unmatched_fx, unmatched_odds)
+        if reason == "naming":
+            st.warning("Fixtures and odds found but names don't match — check aliases in Fix Issues tab")
+        else:
+            st.info("Fixtures and odds cover different rounds — try again closer to game day")
+    elif value_bets_count == 0 and matched and matched > 0:
+        st.info("All games checked but none passed filters — try lowering edge threshold")
+
+
+def render_bet_slip(value_bets: List[Dict[str, Any]], league_label: str) -> None:
+    experimental = not is_two_outcome(league_label)
+
+    with st.container(border=True):
+        st.markdown("### \U0001f4cb Bet Slip")
+        st.caption(f"{len(value_bets)} pick(s) in slip")
+
+        for vb in value_bets:
+            st.markdown(
+                f"- **{vb['selection']}** @ {vb['odds_decimal']:.2f} — edge {vb['edge']:.1%}"
+            )
+
+        stake = st.number_input(
+            "Stake per bet ($)",
+            min_value=1,
+            max_value=1000,
+            value=10,
+            step=1,
+            key=f"bet_slip_stake_{league_label}",
+        )
+        st.markdown(f"**Total outlay: ${stake * len(value_bets)}**")
+
+        if experimental:
+            st.checkbox(
+                "I understand this is an experimental league",
+                key=f"bet_slip_exp_{league_label}",
+            )
+
+        col_copy, col_csv = st.columns(2)
+        with col_copy:
+            lines = []
+            for vb in value_bets:
+                lines.append(f"{vb['selection']} @ {vb['odds_decimal']:.2f} (edge {vb['edge']:.1%})")
+            text_block = "\n".join(lines)
+            if st.button("Copy as Text", key=f"bet_slip_copy_{league_label}"):
+                st.code(text_block, language=None)
+
+        with col_csv:
+            buf = io.StringIO()
+            writer = csv.writer(buf)
+            writer.writerow(["Selection", "Odds", "Edge", "Model %", "Implied %", "EV/unit"])
+            for vb in value_bets:
+                writer.writerow([
+                    vb["selection"],
+                    f"{vb['odds_decimal']:.2f}",
+                    f"{vb['edge']:.1%}",
+                    f"{vb['model_prob']:.1%}",
+                    f"{vb['implied_prob']:.1%}",
+                    f"{vb['ev_per_unit']:.3f}",
+                ])
+            st.download_button(
+                "Export CSV",
+                data=buf.getvalue(),
+                file_name=f"bet_slip_{league_label}.csv",
+                mime="text/csv",
+                key=f"bet_slip_csv_{league_label}",
+            )
+
+
+def render_backtest_settings_button(bt: Dict[str, Any]) -> None:
+    summary = bt.get("summary")
+    if summary:
+        accuracy = summary.get("accuracy_mean", 0)
+        bucket_lift = summary.get("bucket_lift_mean")
+    else:
+        accuracy = bt.get("accuracy", 0)
+        bucket_lift = bt.get("bucket_lift")
+
+    if accuracy <= 0.60 or bucket_lift is None or bucket_lift <= 0:
+        return
+
+    if st.button("Use backtest-optimised settings", key="bt_apply_settings"):
+        target = 65 if bucket_lift > 0.05 else 60
+        st.session_state["confidence_target_value"] = target
+        st.session_state["backtest_settings_applied"] = True
+        st.session_state["conf_target_sel"] = f"{target}%+"
+        st.success(f"Backtest-optimised settings applied! Confidence target set to {target}%+")
+
+
 def render_pick_cards(
     value_bets: List[Dict[str, Any]], league_label: str
 ) -> None:
@@ -394,7 +600,8 @@ def render_pick_cards(
                 st.markdown(f"### {vb['home_team']} vs {vb['away_team']}")
                 league_display = vb.get("league", league_label)
                 maturity = _maturity_badge(min_games)
-                st.caption(f"{league_display} \u2022 {vb['date']} \u2022 {vb['time']} \u2022 Ratings: {maturity}")
+                display_time = _format_au_time(vb['time'], league_display)
+                st.caption(f"{league_display} \u2022 {vb['date']} \u2022 {display_time} \u2022 Ratings: {maturity}")
             with top_right:
                 st.metric("Quality", f"{q}/100", help="Composite score (0-100) combining edge strength, EV, match confidence, odds range, and rating maturity. Higher = more bettable.")
                 st.caption(f"Tier {tier} \u2022 {q_label}")
@@ -409,11 +616,15 @@ def render_pick_cards(
             explainer = _build_pick_explainer(vb)
             st.caption(f"Why: {explainer}")
 
-            det1, det2, det3, det4 = st.columns(4)
-            det1.caption(f"Implied: {vb['implied_prob']:.1%}")
-            det2.caption(f"Elo: {vb['home_elo']:.0f} / {vb['away_elo']:.0f}")
-            det3.caption(f"Match confidence: {vb['match_confidence']:.0f}%")
-            det4.caption(f"Games: {vb.get('home_games', '?')}/{vb.get('away_games', '?')}")
+            det1, det2, det3 = st.columns(3)
+            det1.caption(f"Elo: {vb['home_elo']:.0f} / {vb['away_elo']:.0f}")
+            det2.caption(f"Match confidence: {vb['match_confidence']:.0f}%")
+            det3.caption(f"Games: {vb.get('home_games', '?')}/{vb.get('away_games', '?')}")
+
+            st.caption(
+                f"Confidence vs Implied — Model: {vb['model_prob']:.0%} | Market: {vb['implied_prob']:.0%} | Edge: +{vb['edge']:.0%}"
+            )
+            render_quality_mini_bar(vb)
 
 
 def render_save_controls(

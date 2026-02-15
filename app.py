@@ -41,6 +41,10 @@ from ui_helpers import (
     attach_quality,
     render_backtest_results,
     render_walkforward_results,
+    render_hero_card,
+    render_action_strip,
+    render_bet_slip,
+    render_backtest_settings_button,
 )
 
 
@@ -110,6 +114,23 @@ def main():
             value=True,
             help="Focus on near-term, high-quality picks. Locks defaults and sorts by quality score.",
         )
+
+        conf_options = ["Any", "55%+", "60%+", "65%+", "70%+"]
+        bt_applied = st.session_state.get("backtest_settings_applied", False)
+        bt_target = st.session_state.get("confidence_target_value", 0)
+        if bt_applied and bt_target:
+            target_label = f"{bt_target}%+"
+            if target_label in conf_options and "conf_target_sel" not in st.session_state:
+                st.session_state["conf_target_sel"] = target_label
+                st.session_state["backtest_settings_applied"] = False
+
+        confidence_target = st.selectbox(
+            "Confidence Target",
+            options=conf_options,
+            key="conf_target_sel",
+            help="Filter picks by minimum model probability. Higher = fewer but more confident picks.",
+        )
+        min_model_prob = {"Any": 0.0, "55%+": 0.55, "60%+": 0.60, "65%+": 0.65, "70%+": 0.70}.get(confidence_target, 0.0)
 
         with st.expander("Advanced Settings"):
             lock_defaults = best_bets_mode or st.toggle(
@@ -198,7 +219,7 @@ def main():
         effective_top_n = top_n
 
     tab_picks, tab_explore, tab_backtest, tab_diagnostics, tab_saved = st.tabs(
-        ["Picks", "Explore", "Backtest", "Diagnostics", "Saved Picks"]
+        ["Place Bets", "Browse All", "Trust & Tuning", "Fix Issues", "Track Results"]
     )
 
     if "last_run_data" not in st.session_state:
@@ -209,11 +230,13 @@ def main():
             _render_all_leagues_picks(
                 all_real_leagues, min_edge_val, odds_range, effective_top_n,
                 history_days, lookahead_days, profile, best_bets_mode,
+                min_model_prob=min_model_prob,
             )
         else:
             _render_picks(
                 league_label, min_edge_val, odds_range, effective_top_n,
                 history_days, lookahead_days, best_bets_mode,
+                min_model_prob=min_model_prob,
             )
 
     with tab_explore:
@@ -226,7 +249,7 @@ def main():
             display_value_bets_table(vb, league)
             render_save_controls(vb, league, key_prefix="explore")
         else:
-            st.info("Run the pipeline from the Picks tab to see detailed results here.")
+            st.info("Run the pipeline from the Place Bets tab to see detailed results here.")
 
     with tab_backtest:
         st.subheader("Model Backtest")
@@ -275,6 +298,7 @@ def main():
                     clear_events_cache()
                     bt_result = run_backtest(bt_league, history_days=bt_history, test_days=bt_test)
                 render_backtest_results(bt_result)
+                render_backtest_settings_button(bt_result)
         else:
             wf_c1, wf_c2, wf_c3 = st.columns(3)
             with wf_c1:
@@ -313,6 +337,7 @@ def main():
                         folds=wf_folds,
                     )
                 render_walkforward_results(wf_result)
+                render_backtest_settings_button(wf_result)
 
     with tab_diagnostics:
         run_data = st.session_state.get("last_run_data")
@@ -338,7 +363,7 @@ def main():
                     run_data.get("elo_ratings", {}),
                 )
         else:
-            st.info("Run the pipeline to see diagnostics.")
+            st.info("Run the pipeline from Place Bets to see diagnostics here.")
 
     with tab_saved:
         render_saved_picks()
@@ -347,6 +372,7 @@ def main():
 def _render_picks(
     league_label, min_edge, odds_range, top_n,
     history_days, lookahead_days, best_bets_mode,
+    min_model_prob=0.0,
 ):
     three_outcome = not is_two_outcome(league_label)
 
@@ -380,22 +406,29 @@ def _render_picks(
             league_label, harvest_key, min_edge, odds_range, top_n,
             history_days, lookahead_days=lookahead_days,
             dedup_per_match=three_outcome, best_bets_mode=best_bets_mode,
+            min_model_prob=min_model_prob,
         )
 
         run_data["league_label"] = league_label
         st.session_state["last_run_data"] = run_data
 
+        render_action_strip(run_data)
+
         if value_bets:
+            render_hero_card(value_bets[0])
+
             render_pick_cards(value_bets, league_label)
-            render_save_controls(value_bets, league_label)
+
+            render_bet_slip(value_bets, league_label)
 
             if run_data.get("unmatched_fx") or run_data.get("unmatched_odds"):
-                st.caption("Some games couldn't be matched \u2014 check the Diagnostics tab for details.")
+                st.caption("Some games couldn't be matched \u2014 check the Fix Issues tab for details.")
 
 
 def _render_all_leagues_picks(
     league_list, min_edge, odds_range, top_n,
     history_days, lookahead_days, profile, best_bets_mode,
+    min_model_prob=0.0,
 ):
     st.subheader("Multi-League Scan")
     st.caption("Scanning all leagues for the best value bets")
@@ -478,6 +511,9 @@ def _render_all_leagues_picks(
 
         all_value_bets = attach_quality(all_value_bets)
 
+        if min_model_prob > 0:
+            all_value_bets = [vb for vb in all_value_bets if vb.get("model_prob", 0) >= min_model_prob]
+
         if best_bets_mode:
             all_value_bets.sort(key=lambda x: x.get("quality", 0), reverse=True)
         else:
@@ -485,7 +521,7 @@ def _render_all_leagues_picks(
 
         all_value_bets = all_value_bets[:top_n]
 
-        st.session_state["last_run_data"] = {
+        run_data = {
             "odds_fetched": all_odds,
             "odds_with_lines": all_odds,
             "fixtures_fetched": all_fixtures,
@@ -494,14 +530,23 @@ def _render_all_leagues_picks(
             "value_bets": all_value_bets,
             "league_label": "All Leagues",
         }
+        st.session_state["last_run_data"] = run_data
+
+        render_action_strip(run_data)
+
+        if all_value_bets:
+            render_hero_card(all_value_bets[0])
 
         render_pick_cards(all_value_bets, "All Leagues")
-        render_save_controls(all_value_bets, "All Leagues")
+
+        if all_value_bets:
+            render_bet_slip(all_value_bets, "All Leagues")
 
 
 def _run_pipeline(
     league_label, harvest_key, min_edge, odds_range, top_n,
     history_days, lookahead_days=3, dedup_per_match=False, best_bets_mode=False,
+    min_model_prob=0.0,
 ):
     run_data = {
         "odds_fetched": 0,
@@ -611,6 +656,9 @@ def _run_pipeline(
             return [], run_data
 
         value_bets = attach_quality(value_bets)
+
+        if min_model_prob > 0:
+            value_bets = [vb for vb in value_bets if vb.get("model_prob", 0) >= min_model_prob]
 
         if best_bets_mode:
             value_bets.sort(key=lambda x: x.get("quality", 0), reverse=True)

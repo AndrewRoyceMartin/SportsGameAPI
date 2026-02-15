@@ -1,0 +1,168 @@
+Yep — I can see your `replit.md` on GitHub and it’s up to date. It already captures the current architecture, supported leagues (including **Sportsbet AU: AFL/NRL/NBL**), the 5-tab UI layout, Best Bets mode, quality scoring, maturity penalty, and the improved diagnostics/backtesting stack. ([GitHub][1])
+
+Now, to make the GUI feel *obvious* and *decision-guiding* (not just “a dashboard”), here’s what I’d change.
+
+---
+
+## 1) Change the mental model: “Find bets” → “Make a decision”
+
+### A. Add a **Top Recommendation panel** at the top of **Picks**
+
+Instead of starting with filters, start with a single card:
+
+* **Best Bet Right Now**
+
+  * Pick (team/side)
+  * Stake suggestion (optional, based on your bankroll rules)
+  * Why (1 sentence: edge + model confidence + odds sanity + maturity)
+  * Risk tag: *Low / Medium / High*
+  * “Show next 9” button
+
+This aligns with your existing “Best Bets Mode” + “Why explainer” concept, but makes it the first thing you see. ([GitHub][1])
+
+### B. Add a **“What should I do next?”** strip after every run
+
+One compact, action-oriented message based on pipeline outcome:
+
+* “✅ 10 value bets found — top 3 are Mature teams, odds are within your range.”
+* “⚠️ No matches: looks like *coverage gap* — Sportsbook has Round 1, fixtures not published yet.”
+* “⚠️ Naming mismatch likely — click to review suggested aliases.”
+
+You already have reason-coded empty states and unmatched diagnostics — this just turns them into a guided next action. ([GitHub][1])
+
+---
+
+## 2) Make filters feel safe: presets + progressive disclosure
+
+### A. Replace most sliders with **3 “Run Styles” buttons**
+
+You already have profiles (Conservative/Balanced/Aggressive). Make them big, obvious buttons with a short description:
+
+* **Conservative:** fewer bets, higher edge threshold
+* **Balanced:** defaults
+* **Aggressive:** more bets, lower edge threshold
+
+Keep the actual sliders inside an “Advanced” expander (you already do this directionally). ([GitHub][1])
+
+### B. Add **“Confidence Target”** as a first-class control
+
+Most users don’t think in “min edge” first. They think: *“How sure am I?”*
+
+Add a simple control:
+
+* Confidence target: **Any / 55%+ / 60%+ / 65%+ / 70%+**
+  Then map it internally to:
+* min edge (or a minimum model probability threshold)
+* and/or a minimum Bet Quality
+
+This directly uses your backtest bucket table logic and makes it actionable.
+
+---
+
+## 3) Add a “Bet Slip” (this is what makes it feel like a real tool)
+
+Create a right-side (or top) **Bet Slip** container:
+
+* Selected picks (from cards/table)
+* Total stake
+* Optional: max stake per game / per day
+* Export buttons:
+
+  * Copy as text
+  * CSV export (you already have export patterns)
+* Acknowledge checkbox for Experimental leagues (you already gate saves for experimental) ([GitHub][1])
+
+This single change massively improves usability because it turns browsing into an execution workflow.
+
+---
+
+## 4) Make “Quality” explain itself, visually
+
+You already compute:
+
+* quality score (0–100)
+* tier (A/B/C)
+* maturity penalty
+* “Why” sentence ([GitHub][1])
+
+Upgrade presentation:
+
+### A. Add a **Quality breakdown mini-bar**
+
+On each pick card:
+
+* Edge contribution
+* EV contribution
+* Confidence contribution
+* Odds sanity contribution
+* Maturity penalty indicator
+
+People trust what they can *see*.
+
+### B. Add a “Confidence vs Implied” picture
+
+One tiny line:
+
+* Model: 62%
+* Market implied: 54%
+* Edge: +8%
+
+That’s the whole thesis in one glance.
+
+---
+
+## 5) Make AU leagues feel native (and reduce confusion)
+
+AU users get tripped up by:
+
+* time zones (UTC vs AEDT)
+* preseason / future rounds
+* naming mismatches across providers
+
+### AU-specific UI polish:
+
+* Display match times in **local time (AEDT/AEST)** with a small “UTC” secondary.
+* Add an “AU season context” badge:
+
+  * **Preseason**
+  * **Regular season**
+  * **Round not yet published in fixtures source** (coverage gap)
+
+This directly addresses the pain you saw with AFL/NRL preseason and the Sportsbet-vs-SofaScore timing/round publishing mismatch.
+
+---
+
+## 6) Make Backtest results drive the Picks tab
+
+Your screenshot suggests overall NBA accuracy ~62.8% and “Confident Picks” ~64.3%, with a strong 80%+ bucket but weaker mid buckets.
+
+Turn that into an automatic “recommended threshold”:
+
+* If bucket lift is small, recommend tightening to 65%+ or require “Mature” teams.
+* If calibration is strong (low Brier/log loss), allow more.
+
+In other words: **Backtest → suggested run settings** button:
+
+* “Use backtest-optimised settings for NBA”
+
+This makes your Backtest tab feel like it *improves* the betting experience rather than being a separate “analytics page”. ([GitHub][1])
+
+---
+
+## 7) A concrete revised tab purpose (simple, intuitive)
+
+You already have 5 tabs. Make the labels more user-oriented:
+
+* **Picks (Place Bets)** → shortlist + bet slip
+* **Explore (Browse All)** → full table + filters
+* **Backtest (Trust & Tuning)** → results + “apply recommended settings”
+* **Diagnostics (Fix Issues)** → unmatched + API status + raw samples
+* **Saved (Track Results)** → history + performance
+
+This matches what `replit.md` says each module does, but makes it feel like a guided workflow. ([GitHub][1])
+
+---
+
+If you want, paste your current `app.py` tab layout + the sidebar block (just those sections), and I’ll rewrite them into the “Place Bets + Bet Slip + Apply Backtest Settings” flow without breaking your existing pipeline functions.
+
+[1]: https://raw.githubusercontent.com/AndrewRoyceMartin/SportsGameAPI/main/replit.md "raw.githubusercontent.com"
