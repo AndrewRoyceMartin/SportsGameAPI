@@ -3,7 +3,7 @@ from __future__ import annotations
 import logging
 from typing import List, Dict, Any, Optional, Tuple
 
-from apify_client import run_actor_get_items, ApifyAuthError, ApifyTransientError, ApifyError
+from apify_runner import run_actor_get_items, ApifyAuthError, ApifyTransientError, ApifyError
 from sportsbet_odds import is_sportsbet_league, parse_sportsbet_items, SPORTSBET_LEAGUES
 
 logger = logging.getLogger(__name__)
