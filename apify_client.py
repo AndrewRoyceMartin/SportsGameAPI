@@ -75,8 +75,13 @@ def run_actor_get_items(
             r = sess.post(url, params=params, json=actor_input, timeout=timeout)
 
             if r.status_code in (401, 403):
+                body = ""
+                try:
+                    body = r.text[:500]
+                except Exception:
+                    pass
                 raise ApifyAuthError(
-                    f"Apify auth failed (HTTP {r.status_code}). Check APIFY_TOKEN."
+                    f"Apify HTTP {r.status_code}. Response: {_redact(body or 'empty')}"
                 )
 
             if r.status_code == 400:
