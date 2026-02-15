@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 import os
-import random
-import time
+import re
+import logging
 from typing import Any, Dict, List, Optional
 
-import re
-
-import requests
+from apify_client import ApifyClient as _ApifyClient
 
 
 def _redact(msg: str) -> str:
@@ -26,106 +24,47 @@ class ApifyTransientError(ApifyError):
     pass
 
 
-DEFAULT_TIMEOUT = 60
-DEFAULT_MAX_RETRIES = 5
-DEFAULT_BACKOFF_BASE = 0.6
-DEFAULT_BACKOFF_CAP = 12.0
-
-
-def _sleep_backoff(attempt: int, base: float, cap: float) -> None:
-    delay = min(cap, base * (2 ** attempt))
-    jitter = random.uniform(0, delay * 0.25)
-    time.sleep(delay + jitter)
+logger = logging.getLogger(__name__)
 
 
 def run_actor_get_items(
     actor_id: str,
     actor_input: Dict[str, Any],
     limit: Optional[int] = None,
-    timeout: int = DEFAULT_TIMEOUT,
-    max_retries: int = DEFAULT_MAX_RETRIES,
-    backoff_base: float = DEFAULT_BACKOFF_BASE,
-    backoff_cap: float = DEFAULT_BACKOFF_CAP,
-    session: Optional[requests.Session] = None,
-    logger: Optional[Any] = None,
+    timeout: int = 120,
+    max_retries: int = 3,
+    backoff_base: float = 0.6,
+    backoff_cap: float = 12.0,
+    session: Any = None,
+    logger: Any = None,
 ) -> List[Dict[str, Any]]:
     token = os.getenv("APIFY_TOKEN")
     if not token:
         raise ApifyAuthError("Missing APIFY_TOKEN in environment")
 
-    url = f"https://api.apify.com/v2/acts/{actor_id}/run-sync-get-dataset-items"
-    params: Dict[str, Any] = {
-        "token": token,
-        "format": "json",
-        "clean": "true",
-    }
-    if limit is not None:
-        params["limit"] = limit
+    client = _ApifyClient(token)
 
-    sess = session or requests.Session()
-    last_exc: Optional[Exception] = None
+    try:
+        run = client.actor(actor_id).call(
+            run_input=actor_input,
+            timeout_secs=timeout,
+        )
+    except Exception as e:
+        msg = _redact(str(e))
+        if "401" in msg or "403" in msg:
+            raise ApifyAuthError(f"Apify auth/access error for {actor_id}: {msg}") from e
+        raise ApifyError(f"Apify actor run failed for {actor_id}: {msg}") from e
 
-    for attempt in range(max_retries + 1):
-        try:
-            if logger:
-                logger.info(
-                    f"Apify run actor (attempt {attempt+1}/{max_retries+1}): {actor_id}"
-                )
+    if not run:
+        raise ApifyError(f"Apify actor run returned no result for {actor_id}")
 
-            r = sess.post(url, params=params, json=actor_input, timeout=timeout)
+    dataset_id = run.get("defaultDatasetId")
+    if not dataset_id:
+        raise ApifyError(f"No dataset ID in Apify run result for {actor_id}")
 
-            if r.status_code in (401, 403):
-                body = ""
-                try:
-                    body = r.text[:500]
-                except Exception:
-                    pass
-                raise ApifyAuthError(
-                    f"Apify HTTP {r.status_code}. Response: {_redact(body or 'empty')}"
-                )
+    try:
+        items = list(client.dataset(dataset_id).iterate_items())
+    except Exception as e:
+        raise ApifyError(f"Failed to fetch dataset items for {actor_id}: {_redact(str(e))}") from e
 
-            if r.status_code == 400:
-                body = r.text
-                body = body[:800] + ("..." if len(body) > 800 else "")
-                raise ApifyError(
-                    f"Apify 400 Bad Request. Actor input likely invalid. Response: {body}"
-                )
-
-            if r.status_code == 429 or 500 <= r.status_code < 600:
-                if attempt < max_retries:
-                    if logger:
-                        logger.warning(
-                            f"Apify transient HTTP {r.status_code}; backing off then retrying."
-                        )
-                    _sleep_backoff(attempt, backoff_base, backoff_cap)
-                    continue
-                raise ApifyTransientError(
-                    f"Apify transient HTTP {r.status_code} after retries."
-                )
-
-            r.raise_for_status()
-
-            data = r.json()
-            if not isinstance(data, list):
-                raise ApifyError("Unexpected Apify response shape (expected list).")
-            return data
-
-        except (requests.Timeout, requests.ConnectionError) as e:
-            last_exc = e
-            if attempt < max_retries:
-                if logger:
-                    logger.warning(f"Apify network timeout/connection error; retrying: {_redact(e)}")
-                _sleep_backoff(attempt, backoff_base, backoff_cap)
-                continue
-            raise ApifyTransientError(
-                _redact(f"Apify request failed after retries: {e}")
-            ) from e
-
-        except ApifyError:
-            raise
-
-        except Exception as e:
-            last_exc = e
-            raise ApifyError(_redact(f"Apify unexpected failure: {e}")) from e
-
-    raise ApifyError(_redact(f"Apify failed: {last_exc}"))
+    return items
