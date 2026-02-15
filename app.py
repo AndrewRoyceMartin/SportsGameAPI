@@ -48,8 +48,174 @@ from ui_helpers import (
 )
 
 
+_CUSTOM_CSS = """
+<style>
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+
+html, body, [class*="css"] {
+    font-family: 'Inter', sans-serif;
+}
+
+/* ── Header ────────────────────────────────── */
+h1 {
+    background: linear-gradient(135deg, #6C63FF 0%, #48C6EF 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    font-weight: 700;
+    letter-spacing: -0.5px;
+}
+h2, h3 {
+    font-weight: 600;
+    letter-spacing: -0.3px;
+}
+
+/* ── Sidebar ───────────────────────────────── */
+section[data-testid="stSidebar"] {
+    background: linear-gradient(180deg, #12141D 0%, #1A1D29 100%);
+    border-right: 1px solid rgba(108,99,255,0.15);
+}
+section[data-testid="stSidebar"] h1,
+section[data-testid="stSidebar"] h2 {
+    background: none;
+    -webkit-text-fill-color: #FAFAFA;
+}
+
+/* ── Cards / containers ────────────────────── */
+div[data-testid="stVerticalBlockBorderWrapper"] > div[data-testid="stVerticalBlock"] {
+    border-radius: 12px;
+}
+[data-testid="stExpander"] {
+    border-radius: 10px;
+    border: 1px solid rgba(108,99,255,0.12);
+}
+
+/* ── Metrics ───────────────────────────────── */
+[data-testid="stMetric"] {
+    background: rgba(108,99,255,0.06);
+    border: 1px solid rgba(108,99,255,0.12);
+    border-radius: 10px;
+    padding: 12px 16px;
+}
+[data-testid="stMetricLabel"] {
+    font-size: 0.75rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    opacity: 0.7;
+}
+[data-testid="stMetricValue"] {
+    font-weight: 700;
+    font-size: 1.3rem;
+}
+
+/* ── Buttons ───────────────────────────────── */
+.stButton > button {
+    border-radius: 8px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    transition: all 0.2s ease;
+    border: 1px solid rgba(108,99,255,0.3);
+}
+.stButton > button:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 16px rgba(108,99,255,0.25);
+    border-color: #6C63FF;
+}
+.stButton > button[kind="primary"],
+.stButton > button[data-testid="stBaseButton-primary"] {
+    background: linear-gradient(135deg, #6C63FF 0%, #48C6EF 100%);
+    color: white;
+    border: none;
+}
+
+/* ── Tabs ──────────────────────────────────── */
+.stTabs [data-baseweb="tab-list"] {
+    gap: 4px;
+    background: rgba(26,29,41,0.6);
+    border-radius: 10px;
+    padding: 4px;
+}
+.stTabs [data-baseweb="tab"] {
+    border-radius: 8px;
+    font-weight: 500;
+    padding: 8px 20px;
+    transition: all 0.2s ease;
+}
+.stTabs [aria-selected="true"] {
+    background: rgba(108,99,255,0.15);
+    border-bottom: 2px solid #6C63FF;
+}
+
+/* ── Select / input ────────────────────────── */
+.stSelectbox [data-baseweb="select"] > div,
+.stTextInput > div > div > input,
+.stNumberInput > div > div > input {
+    border-radius: 8px;
+    border: 1px solid rgba(108,99,255,0.15);
+    transition: border-color 0.2s ease;
+}
+.stSelectbox [data-baseweb="select"] > div:focus-within,
+.stTextInput > div > div > input:focus,
+.stNumberInput > div > div > input:focus {
+    border-color: #6C63FF;
+    box-shadow: 0 0 0 2px rgba(108,99,255,0.15);
+}
+
+/* ── Toggle ────────────────────────────────── */
+[data-testid="stToggle"] span[data-baseweb="toggle"] {
+    border-radius: 20px;
+}
+
+/* ── Dataframe ─────────────────────────────── */
+[data-testid="stDataFrame"] {
+    border-radius: 10px;
+    overflow: hidden;
+    border: 1px solid rgba(108,99,255,0.1);
+}
+
+/* ── Divider ───────────────────────────────── */
+hr {
+    border-color: rgba(108,99,255,0.1);
+}
+
+/* ── Download button ───────────────────────── */
+.stDownloadButton > button {
+    border-radius: 8px;
+    font-weight: 600;
+}
+
+/* ── Alert boxes ───────────────────────────── */
+.stAlert {
+    border-radius: 10px;
+}
+
+/* ── Progress bar ──────────────────────────── */
+.stProgress > div > div {
+    background: linear-gradient(90deg, #6C63FF, #48C6EF);
+    border-radius: 8px;
+}
+
+/* ── Scrollbar ─────────────────────────────── */
+::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+}
+::-webkit-scrollbar-track {
+    background: transparent;
+}
+::-webkit-scrollbar-thumb {
+    background: rgba(108,99,255,0.3);
+    border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+    background: rgba(108,99,255,0.5);
+}
+</style>
+"""
+
+
 def main():
     st.set_page_config(page_title="Sports Predictor", page_icon="\u26bd", layout="wide")
+    st.markdown(_CUSTOM_CSS, unsafe_allow_html=True)
 
     st.title("\u26bd Sports Predictor")
     st.caption(
