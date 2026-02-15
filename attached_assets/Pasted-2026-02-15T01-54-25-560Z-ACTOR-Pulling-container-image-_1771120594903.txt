@@ -1,0 +1,35 @@
+2026-02-15T01:54:25.560Z ACTOR: Pulling container image of build F5arePFhEUCOROBE8 from registry.
+2026-02-15T01:54:41.858Z ACTOR: Creating container.
+2026-02-15T01:54:41.927Z ACTOR: Starting container.
+2026-02-15T01:54:42.282Z Will run command: xvfb-run -a -s "-ac -screen 0 1920x1080x24+32 -nolisten tcp" /bin/sh -c ./start_xvfb_and_run_cmd.sh && yarn start:prod --silent
+2026-02-15T01:54:43.574Z yarn run v1.22.22
+2026-02-15T01:54:43.644Z $ node dist/main.js --silent
+2026-02-15T01:54:45.032Z INFO  System info {"apifyVersion":"3.4.4","apifyClientVersion":"2.15.1","crawleeVersion":"3.14.1","osType":"Linux","nodeVersion":"v22.19.0"}
+2026-02-15T01:54:45.096Z WARN  Ignored attempt to charge for an event - the Actor does not use the pay-per-event pricing
+2026-02-15T01:54:46.282Z INFO  PlaywrightCrawler: Starting the crawler.
+2026-02-15T01:55:20.976Z INFO  PlaywrightCrawler: Sports handler - processing URL: https://www.sportsbet.com.au/betting/australian-rules/afl
+2026-02-15T01:55:21.120Z INFO  Processing multi-market-coupon-event
+2026-02-15T01:55:21.168Z Event data: 5
+2026-02-15T01:55:21.243Z INFO  PlaywrightCrawler: Sports handler completed successfully
+2026-02-15T01:55:26.272Z INFO  PlaywrightCrawler: Sports handler - processing URL: https://www.sportsbet.com.au/betting/upcoming-sports
+2026-02-15T01:55:26.558Z INFO  Processing upcoming events
+2026-02-15T01:55:26.604Z Event data: 50
+2026-02-15T01:55:26.660Z INFO  PlaywrightCrawler: Sports handler completed successfully
+2026-02-15T01:55:46.282Z INFO  PlaywrightCrawler:Statistics: PlaywrightCrawler request statistics: {"requestAvgFailedDurationMillis":null,"requestAvgFinishedDurationMillis":37521,"requestsFinishedPerMinute":2,"requestsFailedPerMinute":0,"requestTotalDurationMillis":75042,"requestsTotal":2,"crawlerRuntimeMillis":60213,"retryHistogram":[2]}
+2026-02-15T01:55:46.361Z INFO  PlaywrightCrawler:AutoscaledPool: state {"currentConcurrency":1,"desiredConcurrency":2,"systemStatus":{"isSystemIdle":true,"memInfo":{"isOverloaded":false,"limitRatio":0.2,"actualRatio":0},"eventLoopInfo":{"isOverloaded":false,"limitRatio":0.6,"actualRatio":0},"cpuInfo":{"isOverloaded":false,"limitRatio":0.4,"actualRatio":0.373},"clientInfo":{"isOverloaded":false,"limitRatio":0.3,"actualRatio":0}}}
+2026-02-15T01:56:00.295Z INFO  PlaywrightCrawler: Sports handler - processing URL: https://www.sportsbet.com.au/betting/soccer
+2026-02-15T01:56:01.455Z INFO  Processing upcoming events
+2026-02-15T01:56:01.565Z INFO  PlaywrightCrawler: Sports handler - processing URL: https://www.sportsbet.com.au/betting/basketball-us
+2026-02-15T01:56:02.071Z INFO  Processing multi-market-coupon-event
+2026-02-15T01:56:02.167Z Event data: 3
+2026-02-15T01:56:02.252Z INFO  PlaywrightCrawler: Sports handler completed successfully
+2026-02-15T01:56:02.462Z Event data: 210
+2026-02-15T01:56:02.557Z INFO  PlaywrightCrawler: Sports handler completed successfully
+2026-02-15T01:56:17.030Z INFO  PlaywrightCrawler: Sports handler - processing URL: https://www.sportsbet.com.au/betting/rugby-league/
+2026-02-15T01:56:17.070Z INFO  Processing multi-market-coupon-event
+2026-02-15T01:56:17.083Z Event data: 13
+2026-02-15T01:56:17.110Z INFO  PlaywrightCrawler: Sports handler completed successfully
+2026-02-15T01:56:17.390Z INFO  PlaywrightCrawler: All requests from the queue have been processed, the crawler will shut down.
+2026-02-15T01:56:18.035Z INFO  PlaywrightCrawler: Final request statistics: {"requestsFinished":5,"requestsFailed":0,"retryHistogram":[5],"requestAvgFailedDurationMillis":null,"requestAvgFinishedDurationMillis":28155,"requestsFinishedPerMinute":3,"requestsFailedPerMinute":0,"requestTotalDurationMillis":140773,"requestsTotal":5,"crawlerRuntimeMillis":91966}
+2026-02-15T01:56:18.037Z INFO  PlaywrightCrawler: Finished! Total 5 requests: 5 succeeded, 0 failed. {"terminal":true}
+2026-02-15T01:56:18.072Z Done in 94.50s.
