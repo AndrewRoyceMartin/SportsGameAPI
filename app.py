@@ -81,7 +81,7 @@ def main():
         if stored_league and stored_league not in league_options:
             st.session_state.pop("league_select", None)
 
-        default_idx = league_options.index("NBA") if "NBA" in league_options else 0
+        default_idx = 0
         league_label = st.selectbox(
             "League",
             options=league_options,
