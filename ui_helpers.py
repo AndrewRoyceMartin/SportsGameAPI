@@ -1,6 +1,7 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from datetime import datetime, timedelta
+from typing import Any, Dict, List, Optional, Tuple
 
 import streamlit as st
 import pandas as pd
@@ -13,6 +14,55 @@ from league_map import is_two_outcome
 from mapper import _name_score, _parse_iso
 
 
+def compute_bet_quality(vb: Dict[str, Any]) -> int:
+    edge = vb.get("edge", 0)
+    ev = vb.get("ev_per_unit", 0)
+    conf = vb.get("match_confidence", 0)
+    odds = vb.get("odds_decimal", 0)
+
+    edge_score = min(edge / 0.20, 1.0) * 35
+
+    ev_score = min(max(ev, 0) / 0.30, 1.0) * 25
+
+    conf_score = min(conf / 100.0, 1.0) * 20
+
+    if 1.5 <= odds <= 4.0:
+        odds_score = 20
+    elif 1.3 <= odds < 1.5 or 4.0 < odds <= 6.0:
+        odds_score = 12
+    elif 1.1 <= odds < 1.3 or 6.0 < odds <= 8.0:
+        odds_score = 6
+    else:
+        odds_score = 2
+
+    total = edge_score + ev_score + conf_score + odds_score
+    return max(0, min(100, int(round(total))))
+
+
+def quality_label(score: int) -> str:
+    if score >= 80:
+        return "Strong"
+    if score >= 60:
+        return "Good"
+    if score >= 40:
+        return "Fair"
+    return "Weak"
+
+
+def quality_tier(score: int) -> str:
+    if score >= 80:
+        return "A"
+    if score >= 60:
+        return "B"
+    return "C"
+
+
+def attach_quality(value_bets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    for vb in value_bets:
+        vb["quality"] = compute_bet_quality(vb)
+    return value_bets
+
+
 def show_diagnostics(
     odds_fetched: int,
     odds_with_lines: Optional[int],
@@ -20,69 +70,67 @@ def show_diagnostics(
     matched: Optional[int] = None,
     value_bets: Optional[int] = None,
 ) -> None:
-    with st.expander("Pipeline diagnostics", expanded=False):
-        cols = st.columns(5)
-        cols[0].metric("Odds games fetched", odds_fetched)
-        cols[1].metric(
-            "With posted lines", odds_with_lines if odds_with_lines is not None else "\u2014"
+    cols = st.columns(5)
+    cols[0].metric("Odds games", odds_fetched)
+    cols[1].metric(
+        "With lines", odds_with_lines if odds_with_lines is not None else "\u2014"
+    )
+    cols[2].metric(
+        "Fixtures",
+        fixtures_fetched if fixtures_fetched is not None else "\u2014",
+    )
+    cols[3].metric("Matched", matched if matched is not None else "\u2014")
+    cols[4].metric("Value bets", value_bets if value_bets is not None else "\u2014")
+    st.caption(
+        "**Odds games** = events from odds source. "
+        "**With lines** = events with moneyline prices. "
+        "**Fixtures** = upcoming events from stats source. "
+        "**Matched** = fixtures paired to odds. "
+        "**Value bets** = picks that passed filters."
+    )
+    odds_source = get_odds_source()
+    if odds_source:
+        st.caption(f"Odds source: **{odds_source}**")
+    fatal = get_fatal_error()
+    fetch_errors = get_fetch_errors()
+    if fatal:
+        st.error(
+            f"**Odds fetch failed** (fatal config/auth error):\n\n"
+            f"`{fatal[:300]}`"
         )
-        cols[2].metric(
-            "Fixtures fetched",
-            fixtures_fetched if fixtures_fetched is not None else "\u2014",
-        )
-        cols[3].metric("Matched", matched if matched is not None else "\u2014")
-        cols[4].metric("Value bets", value_bets if value_bets is not None else "\u2014")
-        st.caption(
-            "**Odds games fetched** = events returned by the odds source. "
-            "**With posted lines** = events with actual moneyline prices (not blank). "
-            "**Fixtures fetched** = upcoming events from the stats source. "
-            "**Matched** = fixtures paired to odds successfully. "
-            "**Value bets** = picks that passed your filters."
-        )
-        odds_source = get_odds_source()
-        if odds_source:
-            st.caption(f"Odds source: **{odds_source}**")
-        fatal = get_fatal_error()
-        fetch_errors = get_fetch_errors()
-        if fatal:
-            st.error(
-                f"**Odds fetch failed** (fatal config/auth error):\n\n"
-                f"`{fatal[:300]}`"
-            )
-        elif fetch_errors:
-            st.warning(f"Odds fetch failed ({len(fetch_errors)} error(s)):")
-            for source, reason in fetch_errors:
-                st.caption(f"  {reason[:200]}")
-        stats_failures = get_fetch_failure_count()
-        http_429 = get_http_429_count()
-        http_5xx = get_http_5xx_count()
-        http_404 = get_http_404_count()
-        last_status = get_last_status_code()
-        if stats_failures or http_429 or http_5xx or http_404:
-            parts = []
-            if stats_failures:
-                parts.append(f"{stats_failures} day(s) failed")
-            if http_404:
-                parts.append(f"{http_404} not-found (404) — likely wrong sport slug")
-            if http_429:
-                parts.append(f"{http_429} rate-limit (429)")
-            if http_5xx:
-                parts.append(f"{http_5xx} server error (5xx)")
-            st.warning("Stats provider issues: " + ", ".join(parts) + ".")
-            if last_status and last_status != 200:
-                st.caption(f"Last HTTP status from stats source: {last_status}")
+    elif fetch_errors:
+        st.warning(f"Odds fetch failed ({len(fetch_errors)} error(s)):")
+        for source, reason in fetch_errors:
+            st.caption(f"  {reason[:200]}")
+    stats_failures = get_fetch_failure_count()
+    http_429 = get_http_429_count()
+    http_5xx = get_http_5xx_count()
+    http_404 = get_http_404_count()
+    last_status = get_last_status_code()
+    if stats_failures or http_429 or http_5xx or http_404:
+        parts = []
+        if stats_failures:
+            parts.append(f"{stats_failures} day(s) failed")
+        if http_404:
+            parts.append(f"{http_404} not-found (404)")
+        if http_429:
+            parts.append(f"{http_429} rate-limit (429)")
+        if http_5xx:
+            parts.append(f"{http_5xx} server error (5xx)")
+        st.warning("Stats provider issues: " + ", ".join(parts))
+        if last_status and last_status != 200:
+            st.caption(f"Last HTTP status: {last_status}")
 
-        from config_env import get_env_report
-        env_missing, env_stale = get_env_report()
-        if not env_missing:
-            st.caption("\u2705 APIFY_TOKEN present")
-        else:
-            st.caption("\u274c Missing: " + ", ".join(env_missing))
-        if env_stale:
-            st.caption(
-                "\u26a0\ufe0f Unused secrets still set: " + ", ".join(env_stale)
-                + " \u2014 consider removing them from Secrets."
-            )
+    from config_env import get_env_report
+    env_missing, env_stale = get_env_report()
+    if not env_missing:
+        st.caption("\u2705 APIFY_TOKEN present")
+    else:
+        st.caption("\u274c Missing: " + ", ".join(env_missing))
+    if env_stale:
+        st.caption(
+            "\u26a0\ufe0f Unused secrets: " + ", ".join(env_stale)
+        )
 
 
 def _get_home(x: Dict[str, Any]) -> str:
@@ -153,41 +201,55 @@ def explain_empty_run(
     if odds_fetched == 0:
         st.info(
             f"No odds data available for **{league_label}** right now. "
-            "The sportsbooks may not have posted lines yet. Try again closer to game time."
+            "The sportsbooks may not have posted lines yet."
         )
+        st.markdown("**What to try:**")
+        st.markdown("- Come back closer to game time when lines are posted")
+        st.markdown("- Try a different league that has active games today")
     elif odds_with_lines is not None and odds_with_lines == 0:
         st.warning(
-            f"Found {odds_fetched} scheduled game(s) but none have moneyline prices posted yet. "
-            "Lines typically appear 1-2 days before game time."
+            f"Found {odds_fetched} scheduled game(s) but none have moneyline prices yet."
         )
+        st.markdown("**What to try:**")
+        st.markdown("- Lines typically appear 1\u20132 days before game time")
+        st.markdown("- Check back later or try another league")
     elif fixtures_fetched is not None and fixtures_fetched == 0:
         st.info(
-            f"Odds found ({odds_fetched} games) but no upcoming fixtures from the stats source. "
-            "The schedule may not be published yet for this league window."
+            f"Odds found ({odds_fetched} games) but no fixtures from the stats source."
         )
+        st.markdown("**What to try:**")
+        st.markdown("- Extend the lookahead window in Advanced settings")
+        st.markdown("- The schedule may not be published yet for this window")
     elif matched is not None and matched == 0:
         reason = _diagnose_unmatched(
             unmatched_fixtures or [], unmatched_odds or []
         )
         if reason == "naming":
             st.warning(
-                f"Found {fixtures_fetched} fixture(s) and {odds_fetched} odds event(s), but could not "
-                "match any of them together. Team/player names likely differ between sources. "
-                "Check the **Unmatched Samples** section below for details."
+                f"Found {fixtures_fetched} fixture(s) and {odds_fetched} odds event(s), "
+                "but names don't match between sources."
             )
+            st.markdown("**What to try:**")
+            st.markdown("- Check the Diagnostics tab for unmatched name details")
+            st.markdown("- Team name aliases may need updating")
         else:
             st.info(
-                f"Found {fixtures_fetched} fixture(s) and {odds_fetched} odds event(s), but they "
-                "cover different rounds/dates. The fixtures source may not have published these "
-                "matches yet (common for far-ahead rounds). Try again closer to game day."
+                f"Found {fixtures_fetched} fixture(s) and {odds_fetched} odds event(s), "
+                "but they cover different rounds/dates."
             )
+            st.markdown("**What to try:**")
+            st.markdown("- The fixture source hasn't published these matches yet \u2014 common for far-ahead rounds")
+            st.markdown("- Try again closer to game day or extend the lookahead window")
     else:
         edge_pct = min_edge * 100
         st.info(
-            f"All {matched} matched game(s) were checked, but none passed filters: "
-            f"min edge {edge_pct:.0f}%, odds range {odds_range[0]:.2f} - {odds_range[1]:.2f}. "
-            "Try lowering the min edge or widening the odds range."
+            f"All {matched} matched game(s) checked, but none passed filters: "
+            f"min edge {edge_pct:.0f}%, odds {odds_range[0]:.2f}\u2013{odds_range[1]:.2f}."
         )
+        st.markdown("**What to try:**")
+        st.markdown("- Lower the minimum edge threshold")
+        st.markdown("- Widen the odds range")
+        st.markdown("- Switch to the Aggressive run profile")
 
 
 def show_unmatched_samples(
@@ -198,7 +260,7 @@ def show_unmatched_samples(
         return
     reason = _diagnose_unmatched(unmatched_fixtures, unmatched_odds)
     title = (
-        "Unmatched samples (debug mapping issues)"
+        "Unmatched samples (naming issues)"
         if reason == "naming"
         else "Unmatched samples (different rounds/dates)"
     )
@@ -217,12 +279,12 @@ def show_unmatched_samples(
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
         if reason == "naming":
             st.caption(
-                "Team names look similar but don't match — aliases may need to be added to mapper.py."
+                "Team names look similar but don't match \u2014 aliases may need updating."
             )
         else:
             st.caption(
-                "These appear to be different rounds/dates. The fixtures source may not have "
-                "published these matches yet — this is normal for far-ahead rounds."
+                "These appear to be different rounds/dates \u2014 "
+                "normal for far-ahead rounds."
             )
 
 
@@ -266,33 +328,111 @@ def show_matched_summary(
             )
 
 
+def render_pick_cards(
+    value_bets: List[Dict[str, Any]], league_label: str
+) -> None:
+    if not value_bets:
+        return
+
+    avg_edge = sum(vb["edge"] for vb in value_bets) / len(value_bets)
+    avg_ev = sum(vb["ev_per_unit"] for vb in value_bets) / len(value_bets)
+    avg_quality = sum(vb.get("quality", 0) for vb in value_bets) / len(value_bets)
+
+    mc1, mc2, mc3, mc4 = st.columns(4)
+    mc1.metric("Picks Found", len(value_bets))
+    mc2.metric("Avg Edge", f"{avg_edge:.1%}")
+    mc3.metric("Avg EV/unit", f"{avg_ev:.3f}")
+    mc4.metric("Avg Quality", f"{avg_quality:.0f}/100")
+
+    st.divider()
+
+    for i, vb in enumerate(value_bets):
+        q = vb.get("quality", 0)
+        q_label = quality_label(q)
+        tier = quality_tier(q)
+
+        with st.container(border=True):
+            top_left, top_right = st.columns([3, 1])
+            with top_left:
+                st.markdown(f"### {vb['home_team']} vs {vb['away_team']}")
+                league_display = vb.get("league", league_label)
+                st.caption(f"{league_display} \u2022 {vb['date']} \u2022 {vb['time']}")
+            with top_right:
+                st.metric("Quality", f"{q}/100")
+                st.caption(f"Tier {tier} \u2022 {q_label}")
+
+            c1, c2, c3, c4, c5 = st.columns(5)
+            c1.metric("Pick", vb["selection"])
+            c2.metric("Odds", f"{vb['odds_decimal']:.2f}")
+            c3.metric("Edge", f"{vb['edge']:.1%}")
+            c4.metric("EV/unit", f"{vb['ev_per_unit']:.3f}")
+            c5.metric("Model %", f"{vb['model_prob']:.1%}")
+
+            det1, det2, det3 = st.columns(3)
+            det1.caption(f"Implied: {vb['implied_prob']:.1%}")
+            det2.caption(f"Elo: {vb['home_elo']:.0f} / {vb['away_elo']:.0f}")
+            det3.caption(f"Match confidence: {vb['match_confidence']:.0f}%")
+
+
+def render_save_controls(
+    value_bets: List[Dict[str, Any]], league_label: str
+) -> None:
+    from store import save_picks, init_db
+
+    experimental = not is_two_outcome(league_label)
+
+    if experimental:
+        st.info(
+            "This is a 3-outcome market \u2014 edges may be overstated."
+        )
+        allow_save = st.checkbox(
+            "I understand and want to save these picks anyway",
+            key=f"exp_save_{league_label}",
+        )
+    else:
+        allow_save = True
+
+    col1, col2 = st.columns([1, 3])
+    with col1:
+        save_disabled = not allow_save
+        if st.button("Save All Picks", type="secondary", disabled=save_disabled, key=f"save_{league_label}"):
+            try:
+                init_db()
+                for vb in value_bets:
+                    vb["is_experimental"] = 1 if experimental else 0
+                count = save_picks(value_bets)
+                st.success(f"Saved {count} pick(s)")
+            except Exception as e:
+                st.error(f"Failed to save: {e}")
+
+
 def show_results_explainer() -> None:
-    with st.expander("What do these results mean?"):
+    with st.expander("What do these columns mean?"):
         st.markdown(
-            "**Match / Date / Time**: The event and scheduled start time (UTC).\n\n"
-            "**Pick**: The side the model rates as the best value (highest EV) for this match.\n\n"
-            "**Odds**: Consensus decimal odds from the books (median across sportsbooks).\n\n"
-            "**Model %**: The model's estimated chance this pick wins.\n\n"
-            "**Implied %**: The market's implied chance from the odds (\u2248 1 / odds).\n\n"
-            "**Edge**: Model % \u2212 Implied %. Positive edge means the model thinks the market underprices this outcome.\n\n"
-            "**EV/unit**: Expected profit per 1 unit staked (EV = ModelProb \u00d7 Odds \u2212 1). "
-            "Example: EV/unit = 0.10 means +0.10 units expected return per 1 unit bet (before commissions/limits).\n\n"
-            "**Elo H / Elo A**: The model strength ratings for the two teams/participants used to generate Model %."
+            "**Match**: The event matchup.\n\n"
+            "**Pick**: The side with the best value.\n\n"
+            "**Odds**: Consensus decimal odds (median across sportsbooks).\n\n"
+            "**Model %**: The model's estimated win probability.\n\n"
+            "**Implied %**: The market's implied probability (\u2248 1/odds).\n\n"
+            "**Edge**: Model % \u2212 Implied %. Positive = underpriced by the market.\n\n"
+            "**EV/unit**: Expected profit per 1 unit staked.\n\n"
+            "**Quality**: Composite score (0\u2013100) combining edge, EV, confidence, and odds range.\n\n"
+            "**Tier**: A (80+) = Strong, B (60\u201379) = Good, C (<60) = Fair/Weak."
         )
 
 
 AVAILABLE_COLUMNS = [
     "Match", "Date", "Time", "Pick", "Odds", "Model %",
-    "Implied %", "Edge", "EV/unit", "Elo H", "Elo A",
-    "Confidence",
+    "Implied %", "Edge", "EV/unit", "Quality", "Tier",
+    "Elo H", "Elo A", "Confidence",
 ]
 
 DEFAULT_COLUMNS = [
-    "Match", "Date", "Time", "Pick", "Odds", "Model %",
-    "Implied %", "Edge", "EV/unit",
+    "Match", "Date", "Pick", "Odds", "Edge", "EV/unit", "Quality", "Tier",
 ]
 
 SORT_PRESETS = {
+    "Best Quality": "quality",
     "Best EV": "EV/unit",
     "Highest Edge": "Edge",
     "Soonest Start": "sort_time",
@@ -303,7 +443,6 @@ SORT_PRESETS = {
 def display_value_bets_table(
     value_bets: List[Dict[str, Any]], league_label: str
 ) -> bool:
-    st.success(f"Found {len(value_bets)} value bet(s) for {league_label}")
     show_results_explainer()
 
     experimental = not is_two_outcome(league_label)
@@ -314,35 +453,37 @@ def display_value_bets_table(
             "Sort by",
             options=list(SORT_PRESETS.keys()),
             index=0,
-            key="sort_preset",
+            key="sort_preset_explore",
         )
     with c2:
         visible_cols = st.multiselect(
             "Columns",
             options=AVAILABLE_COLUMNS,
             default=DEFAULT_COLUMNS,
-            key="visible_cols",
+            key="visible_cols_explore",
         )
 
     has_league_col = any("league" in vb for vb in value_bets)
 
     rows = []
     for vb in value_bets:
+        q = vb.get("quality", 0)
         row = {
-                "Match": f"{vb['home_team']} vs {vb['away_team']}",
-                "Date": vb["date"],
-                "Time": vb["time"],
-                "Pick": vb["selection"],
-                "_odds": vb["odds_decimal"],
-                "_model_p": vb["model_prob"],
-                "_implied_p": vb["implied_prob"],
-                "_edge": vb["edge"],
-                "_ev": vb["ev_per_unit"],
-                "_elo_h": vb["home_elo"],
-                "_elo_a": vb["away_elo"],
-                "_conf": vb["match_confidence"],
-                "sort_time": vb["date"] + " " + vb["time"],
-            }
+            "Match": f"{vb['home_team']} vs {vb['away_team']}",
+            "Date": vb["date"],
+            "Time": vb["time"],
+            "Pick": vb["selection"],
+            "_odds": vb["odds_decimal"],
+            "_model_p": vb["model_prob"],
+            "_implied_p": vb["implied_prob"],
+            "_edge": vb["edge"],
+            "_ev": vb["ev_per_unit"],
+            "_elo_h": vb["home_elo"],
+            "_elo_a": vb["away_elo"],
+            "_conf": vb["match_confidence"],
+            "_quality": q,
+            "sort_time": vb["date"] + " " + vb["time"],
+        }
         if has_league_col:
             row["League"] = vb.get("league", "")
         rows.append(row)
@@ -354,8 +495,9 @@ def display_value_bets_table(
         "Edge": "_edge",
         "Confidence": "_conf",
         "sort_time": "sort_time",
+        "quality": "_quality",
     }
-    sort_col = sort_map.get(SORT_PRESETS.get(sort_choice, "EV/unit"), "_ev")
+    sort_col = sort_map.get(SORT_PRESETS.get(sort_choice, "quality"), "_quality")
     if sort_col == "sort_time":
         df = df.sort_values("sort_time", ascending=True)
     else:
@@ -369,6 +511,8 @@ def display_value_bets_table(
     df["Elo H"] = df["_elo_h"].apply(lambda x: f"{x:.0f}")
     df["Elo A"] = df["_elo_a"].apply(lambda x: f"{x:.0f}")
     df["Confidence"] = df["_conf"].apply(lambda x: f"{x:.0f}%")
+    df["Quality"] = df["_quality"].apply(lambda x: f"{x}")
+    df["Tier"] = df["_quality"].apply(lambda x: quality_tier(x))
 
     display_cols = [c for c in visible_cols if c in df.columns]
     if has_league_col and "League" not in display_cols:
@@ -378,37 +522,6 @@ def display_value_bets_table(
 
     st.dataframe(df[display_cols], use_container_width=True, hide_index=True)
     return experimental
-
-
-def render_save_controls(
-    value_bets: List[Dict[str, Any]], league_label: str
-) -> None:
-    from store import save_picks, init_db
-
-    experimental = not is_two_outcome(league_label)
-
-    if experimental:
-        st.info(
-            "Saving picks is disabled for 3-outcome leagues unless explicitly enabled."
-        )
-        allow_save = st.checkbox(
-            "I understand this is a 3-outcome market and want to save these picks anyway"
-        )
-    else:
-        allow_save = True
-
-    col1, col2 = st.columns([1, 3])
-    with col1:
-        save_disabled = not allow_save
-        if st.button("Save All Picks", type="secondary", disabled=save_disabled):
-            try:
-                init_db()
-                for vb in value_bets:
-                    vb["is_experimental"] = 1 if experimental else 0
-                count = save_picks(value_bets)
-                st.success(f"Saved {count} pick(s)")
-            except Exception as e:
-                st.error(f"Failed to save: {e}")
 
 
 def render_saved_picks() -> None:
@@ -446,6 +559,6 @@ def render_saved_picks() -> None:
                 pd.DataFrame(hist_rows), use_container_width=True, hide_index=True
             )
         else:
-            st.info("No saved picks yet.")
+            st.info("No saved picks yet. Run the pipeline and save your best bets!")
     except Exception:
         st.info("No saved picks yet.")

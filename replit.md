@@ -70,15 +70,19 @@ SofaScore provides fixtures/results via sport-specific endpoints (basketball, ic
 15. 3-outcome leagues: dedup best side per match, require explicit save opt-in, tag as experimental
 
 ## UI Features
+- **4-tab layout**: Picks (card-based shortlist), Explore (sortable table), Diagnostics (pipeline stats), Saved Picks (history)
+- **Best Bets Mode**: Toggle (default ON) that auto-sorts by quality, limits to top 10, locks defaults
+- **Bet Quality scoring**: Composite 0-100 score from edge (35%), EV (25%), confidence (20%), odds sanity (20%)
+- **Quality tiers**: A (80+) = Strong, B (60-79) = Good, C (<60) = Fair/Weak
+- **Card-based picks**: Match details, quality badge, key stats (edge, EV, model %) per pick
+- **Simplified sidebar**: Basic controls always visible (sport, league, profile, Best Bets Mode) + Advanced expander
 - **Sport filter**: Filter leagues by sport category (All, Basketball, Football, Hockey, MMA, Soccer)
 - **Search**: Live text filtering of league names
 - **Run profiles**: Conservative (higher edge, tighter odds), Balanced (league defaults), Aggressive (lower edge, wider odds)
-- **Lock defaults**: Toggle to prevent accidental filter changes
-- **Defaults indicator**: Caption showing current league, sport, and profile
-- **Sorting presets**: Sort results by Best EV, Highest Edge, Soonest Start, Best Confidence
-- **Column toggles**: Show/hide columns (Match, Date, Time, Pick, Odds, Model %, Implied %, Edge, EV/unit, Elo H/A, Confidence)
-- **Unmatched samples**: Debug expander showing top 10 unmatched fixtures/odds events
-- **Reason-coded empty states**: Specific explanations for why no value bets were found at each pipeline stage
+- **Sorting presets**: Sort by Best Quality, Best EV, Highest Edge, Soonest Start, Best Confidence
+- **Column toggles**: Show/hide columns including Quality and Tier columns
+- **Actionable empty states**: Specific guidance with "What to try" suggestions at each pipeline stage
+- **Smart diagnostics**: Distinguishes naming mismatches from coverage gaps with targeted guidance
 
 ## Production Safety
 - 2-outcome leagues (NBA, NFL, NHL, AFL, NRL, NBL, College FB/BB): full pipeline, normal save
@@ -90,8 +94,10 @@ SofaScore provides fixtures/results via sport-specific endpoints (basketball, ic
 - Centralized in `config_env.py`; startup audit surfaces missing/stale secrets in diagnostics
 
 ## UI Tabs
-1. **Value Bets** - League selection, pipeline execution, value bet table with save functionality
-2. **Saved Picks** - History of saved value bet picks with P/L tracking
+1. **Picks** - Card-based shortlist of top value bets with quality badges and save controls
+2. **Explore** - Full sortable table with all value bets, column toggles, sort presets
+3. **Diagnostics** - Pipeline stats, unmatched samples, odds source info, error details
+4. **Saved Picks** - History of saved picks with P/L tracking
 
 ## Running
 ```

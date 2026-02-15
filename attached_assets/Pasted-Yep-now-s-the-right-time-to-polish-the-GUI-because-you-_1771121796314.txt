@@ -1,0 +1,229 @@
+Yep — now’s the right time to polish the GUI, because you’ve added enough power (sport filter, league search, profiles, lock defaults, unmatched diagnostics) that the UI needs to lead you instead of just exposing knobs.
+
+Here’s a high-impact UI redesign plan that fits your current architecture (app.py thin + ui_helpers.py owns UI) and directly guides you to “best bets to place”.
+
+1) Reframe the app around a “Betting Decision Flow”
+
+Right now the user experience is “configure → run → look at a table”.
+
+Make it “Pick league → Run → Bet shortlist → Verify → Save”.
+
+New top-level layout (tabs)
+
+✅ Picks (Recommended) (default tab)
+
+🔎 Explore (all matched games + filters)
+
+🧪 Diagnostics (only when needed)
+
+📒 Saved Picks (history + tracking later)
+
+This stops the app feeling like a debug tool.
+
+2) Picks tab: A “Bet Slip” style shortlist (what to actually bet)
+
+On Picks, don’t show a big dataframe first. Show:
+
+A) “Today / Next 24h” switch
+
+A simple toggle:
+
+Next 24h (default)
+
+Lookahead window
+
+Because bettors mostly act near-term.
+
+B) “Top Bets” cards (not a table)
+
+For the top N (e.g., 5–10), display cards with:
+
+Match (Home vs Away)
+
+Start time (local time + UTC in tooltip)
+
+Pick (Team) + Odds
+
+Model % vs Implied %
+
+Edge %
+
+EV/unit
+
+Confidence score
+
+Consensus book(s) used
+
+And a single primary action:
+
+✅ Add to Bet Slip
+
+C) Bet Slip panel (right column or expander)
+
+A curated list of selected bets with:
+
+stake input (flat default, later Kelly)
+
+expected return summary
+
+“Remove” buttons
+
+✅ Save slip (writes to SQLite via existing store)
+
+This makes it feel like a wagering tool, not a data science output.
+
+3) Add a “Quality Score” to rank bets intelligently
+
+Right now you have Edge and EV. With multiple providers + AU quirks, add a composite rank that reflects “bettable quality”.
+
+Suggested “Bet Quality” score (0–100)
+
+Weighted:
+
+Edge% (scaled)
+
+EV/unit (scaled)
+
+Confidence (match_confidence + model confidence)
+
+Market sanity checks:
+
+penalise extreme odds (very longshots) unless edge is huge
+
+penalise low consensus agreement (if you track dispersion across books)
+
+Display as:
+
+Quality: 82/100 (Strong)
+
+with a tooltip: “High edge, strong mapping confidence, odds in preferred range”.
+
+This becomes your default sort in Picks.
+
+4) Sidebar: simplify controls using “Basic / Advanced”
+
+Your sidebar is doing a lot now (sport filter, league search, profiles, lock defaults, min edge, odds range, lookahead, history, top N…).
+
+Split it:
+
+Basic (always visible)
+
+Sport dropdown
+
+Search leagues
+
+League dropdown
+
+Run profile (Conservative/Balanced/Aggressive)
+
+Run button
+
+Advanced (expander)
+
+Min edge
+
+Odds range
+
+Lookahead days
+
+History days
+
+Top N
+
+Column toggles (move to Explore tab ideally)
+
+And keep your “Defaults applied…” line — it’s excellent.
+
+This reduces cognitive load massively.
+
+5) Improve the empty states into “What to do next” prompts
+
+Your new empty-state diagnosis is already strong. Make it actionable:
+
+If coverage_gap
+
+Show buttons:
+
+Extend lookahead (+7 days)
+
+Try a closer window (Next 24h)
+
+Switch to a league with active fixtures (NBL)
+
+If naming
+
+Show:
+
+“Top mismatch pair suggestions” (just 3–5)
+
+A button: Copy alias template (pre-filled lines like "gws giants": "greater western sydney giants")
+
+If “odds exist, no fixtures”
+
+Show:
+
+“Stats source hasn’t published this round yet”
+
+Quick action: Switch stats window forward (date_to +7)
+
+These turn frustration into guidance.
+
+6) Explore tab: keep your dataframe, but make it “scannable”
+
+For Explore:
+
+Default columns: Match, Start, Pick, Odds, Edge, EV, Quality
+
+Hide Elo columns by default (already done)
+
+Add row highlight via a “Tier label” column:
+
+Tier A (Quality ≥ 80)
+
+Tier B (60–79)
+
+Tier C (<60)
+
+Even without colours, the tier label makes scanning easy.
+
+7) Diagnostics tab: isolate noise
+
+Move all this out of the main flow:
+
+“Odds games fetched / fixtures fetched / matched”
+
+429 / 5xx counters
+
+Unmatched samples
+
+And only show an inline hint on Picks:
+
+“Something didn’t match — see Diagnostics → Unmatched Samples”
+
+8) “Best Bets Mode” (one switch that changes behaviour)
+
+Add a toggle in Picks:
+
+Best Bets Mode (ON by default) does:
+
+auto-filters to next 24h
+
+auto-sorts by Quality
+
+limits to Top 5–10
+
+locks defaults on (prevents accidental slider damage)
+
+When OFF, behave like the current power-user mode.
+
+This is the single biggest “user friendly” win.
+
+What file to change
+
+All of this can be done cleanly with:
+
+ui_helpers.py: new render functions (cards, bet slip, quality score, empty-state actions)
+
+app.py: just tabs + call the new helpers
+
+(optional) store.py: add “slip_id” grouping later, but not required now

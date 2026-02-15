@@ -34,6 +34,8 @@ from ui_helpers import (
     render_saved_picks,
     explain_empty_run,
     show_unmatched_samples,
+    render_pick_cards,
+    attach_quality,
 )
 
 
@@ -46,7 +48,7 @@ def main():
     )
 
     with st.sidebar:
-        st.header("Configuration")
+        st.header("Settings")
 
         sport_filter = st.selectbox(
             "Sport",
@@ -63,7 +65,7 @@ def main():
 
         leagues = available_leagues(sport_filter=sport_filter, search=league_search)
         if not leagues:
-            st.warning("No leagues match your filter. Try broadening your search.")
+            st.warning("No leagues match your filter.")
             st.stop()
 
         league_options = ["All"] + leagues
@@ -73,161 +75,243 @@ def main():
             options=league_options,
             index=default_idx,
             key=f"league_select_{sport_filter}",
-            help="Choose a league to scan, or 'All' to scan every league in the current filter.",
+            help="Choose a league to scan, or 'All' for multi-league scan.",
         )
 
         if is_separator(league_label):
-            st.warning("Please select a league above or below the separator.")
+            st.warning("Please select a league.")
             st.stop()
 
         run_all = league_label == "All"
-
-        st.divider()
 
         profile = st.selectbox(
             "Run Profile",
             options=list(RUN_PROFILES.keys()),
             index=1,
-            help="Conservative = higher min edge, tighter odds. Balanced = league defaults. Aggressive = lower min edge, wider odds.",
+            help="Conservative = higher thresholds. Balanced = defaults. Aggressive = lower thresholds.",
         )
 
-        lock_defaults = st.toggle(
-            "Lock defaults",
-            value=False,
-            help="When on, changing league forces defaults and disables manual edits.",
+        best_bets_mode = st.toggle(
+            "Best Bets Mode",
+            value=True,
+            help="Focus on near-term, high-quality picks. Locks defaults and sorts by quality score.",
         )
 
-        def _apply_defaults(league: str):
-            d = DEFAULTS.get(league)
-            if not d:
-                return
-            d = apply_profile(d, profile)
-            st.session_state["min_edge"] = d["min_edge"]
-            st.session_state["odds_range"] = (d["min_odds"], d["max_odds"])
-            st.session_state["history_days"] = d["history_days"]
-            st.session_state["lookahead_days"] = d["lookahead_days"]
-            st.session_state["top_n"] = d["top_n"]
-
-        prev = st.session_state.get("_prev_league")
-        prev_profile = st.session_state.get("_prev_profile")
-        if prev != league_label or prev_profile != profile:
-            _apply_defaults(league_label)
-            st.session_state["_prev_league"] = league_label
-            st.session_state["_prev_profile"] = profile
-
-        d_fb = DEFAULTS.get(league_label, {})
-        d_fb = apply_profile(d_fb, profile) if d_fb else d_fb
-        if "min_edge" not in st.session_state:
-            st.session_state["min_edge"] = d_fb.get("min_edge", 5)
-        if "odds_range" not in st.session_state:
-            st.session_state["odds_range"] = (
-                d_fb.get("min_odds", 1.50),
-                d_fb.get("max_odds", 5.00),
+        with st.expander("Advanced Settings"):
+            lock_defaults = best_bets_mode or st.toggle(
+                "Lock defaults",
+                value=False,
+                help="Prevent accidental filter changes.",
+                disabled=best_bets_mode,
             )
-        if "top_n" not in st.session_state:
-            st.session_state["top_n"] = d_fb.get("top_n", 10)
-        if "history_days" not in st.session_state:
-            st.session_state["history_days"] = d_fb.get("history_days", 90)
-        if "lookahead_days" not in st.session_state:
-            st.session_state["lookahead_days"] = d_fb.get("lookahead_days", 3)
+
+            def _apply_defaults(league: str):
+                d = DEFAULTS.get(league)
+                if not d:
+                    return
+                d = apply_profile(d, profile)
+                st.session_state["min_edge"] = d["min_edge"]
+                st.session_state["odds_range"] = (d["min_odds"], d["max_odds"])
+                st.session_state["history_days"] = d["history_days"]
+                st.session_state["lookahead_days"] = d["lookahead_days"]
+                st.session_state["top_n"] = d["top_n"]
+
+            prev = st.session_state.get("_prev_league")
+            prev_profile = st.session_state.get("_prev_profile")
+            if prev != league_label or prev_profile != profile:
+                _apply_defaults(league_label)
+                st.session_state["_prev_league"] = league_label
+                st.session_state["_prev_profile"] = profile
+
+            d_fb = DEFAULTS.get(league_label, {})
+            d_fb = apply_profile(d_fb, profile) if d_fb else d_fb
+            if "min_edge" not in st.session_state:
+                st.session_state["min_edge"] = d_fb.get("min_edge", 5)
+            if "odds_range" not in st.session_state:
+                st.session_state["odds_range"] = (
+                    d_fb.get("min_odds", 1.50),
+                    d_fb.get("max_odds", 5.00),
+                )
+            if "top_n" not in st.session_state:
+                st.session_state["top_n"] = d_fb.get("top_n", 10)
+            if "history_days" not in st.session_state:
+                st.session_state["history_days"] = d_fb.get("history_days", 90)
+            if "lookahead_days" not in st.session_state:
+                st.session_state["lookahead_days"] = d_fb.get("lookahead_days", 3)
+
+            min_edge_pct = st.slider(
+                "Min Edge %", 1, 30, step=1,
+                key="min_edge", disabled=lock_defaults,
+            )
+            odds_range = st.slider(
+                "Odds Range", 1.10, 10.0, step=0.05,
+                key="odds_range", disabled=lock_defaults,
+            )
+            top_n_options = [5, 10, 15, 20, 25]
+            top_n_val = st.session_state["top_n"]
+            top_n_idx = top_n_options.index(top_n_val) if top_n_val in top_n_options else 1
+            top_n = st.selectbox(
+                "Max Results", options=top_n_options,
+                index=top_n_idx, disabled=lock_defaults,
+            )
+            history_days = st.slider(
+                "Elo History (days)", 30, 365, step=10,
+                key="history_days", disabled=lock_defaults,
+            )
+            lookahead_days = st.slider(
+                "Lookahead (days)", 1, 28, step=1,
+                key="lookahead_days", disabled=lock_defaults,
+            )
+
+            if st.button("Reset to defaults"):
+                _apply_defaults(league_label)
+                st.rerun()
+
+        min_edge_val = st.session_state["min_edge"] / 100.0
 
         if run_all:
-            st.caption(f"Running **All** leagues ({sport_filter} filter) \u2014 {profile}")
+            st.caption(f"Scanning **All** leagues ({sport_filter}) \u2014 {profile}")
         else:
             sport_tag = LEAGUE_SPORT.get(league_label, "")
-            st.caption(f"Defaults applied for: **{league_label}** ({sport_tag}) \u2014 {profile}")
-
-        st.subheader("Value Filters")
-        min_edge_pct = st.slider(
-            "Min Edge %",
-            1,
-            30,
-            step=1,
-            key="min_edge",
-            disabled=lock_defaults,
-            help="Only show bets where the model's win probability is at least this much higher than the market-implied probability.",
-        )
-        min_edge_val = min_edge_pct / 100.0
-        odds_range = st.slider(
-            "Odds Range",
-            1.10,
-            10.0,
-            step=0.05,
-            key="odds_range",
-            disabled=lock_defaults,
-            help="Only consider bets with decimal odds inside this range.",
-        )
-        top_n_options = [5, 10, 15, 20, 25]
-        top_n_val = st.session_state["top_n"]
-        top_n_idx = top_n_options.index(top_n_val) if top_n_val in top_n_options else 1
-        top_n = st.selectbox(
-            "Max Results",
-            options=top_n_options,
-            index=top_n_idx,
-            disabled=lock_defaults,
-            help="Show at most this many top-ranked bets after filtering.",
-        )
-
-        st.subheader("History Window")
-        history_days = st.slider(
-            "Elo History (days)",
-            30,
-            365,
-            step=10,
-            key="history_days",
-            disabled=lock_defaults,
-            help="How far back to build team ratings from past results.",
-        )
-        lookahead_days = st.slider(
-            "Lookahead (days)",
-            1,
-            28,
-            step=1,
-            key="lookahead_days",
-            disabled=lock_defaults,
-            help="How many days ahead to search for upcoming fixtures and odds.",
-        )
-
-        if st.button("Reset filters to league defaults"):
-            _apply_defaults(league_label)
-            st.rerun()
+            mode_tag = "Best Bets" if best_bets_mode else "Full Scan"
+            st.caption(f"**{league_label}** ({sport_tag}) \u2014 {profile} \u2014 {mode_tag}")
 
     all_real_leagues = [l for l in leagues if not is_separator(l)]
 
-    tab_value, tab_history = st.tabs(["Value Bets", "Saved Picks"])
+    if best_bets_mode:
+        effective_top_n = min(top_n, 10)
+    else:
+        effective_top_n = top_n
 
-    with tab_value:
+    tab_picks, tab_explore, tab_diagnostics, tab_saved = st.tabs(
+        ["Picks", "Explore", "Diagnostics", "Saved Picks"]
+    )
+
+    if "last_run_data" not in st.session_state:
+        st.session_state["last_run_data"] = None
+
+    with tab_picks:
         if run_all:
-            _render_all_leagues(
-                all_real_leagues, min_edge_val, odds_range, top_n,
-                history_days, lookahead_days, profile,
+            _render_all_leagues_picks(
+                all_real_leagues, min_edge_val, odds_range, effective_top_n,
+                history_days, lookahead_days, profile, best_bets_mode,
             )
         else:
-            _render_value_bets(
-                league_label, min_edge_val, odds_range, top_n, history_days, lookahead_days
+            _render_picks(
+                league_label, min_edge_val, odds_range, effective_top_n,
+                history_days, lookahead_days, best_bets_mode,
             )
 
-    with tab_history:
+    with tab_explore:
+        run_data = st.session_state.get("last_run_data")
+        if run_data and run_data.get("value_bets"):
+            vb = run_data["value_bets"]
+            league = run_data.get("league_label", "")
+            st.subheader(f"All Results \u2014 {league}")
+            st.caption(f"{len(vb)} value bet(s) found")
+            display_value_bets_table(vb, league)
+            render_save_controls(vb, league)
+        else:
+            st.info("Run the pipeline from the Picks tab to see detailed results here.")
+
+    with tab_diagnostics:
+        run_data = st.session_state.get("last_run_data")
+        if run_data:
+            st.subheader("Pipeline Diagnostics")
+            show_diagnostics(
+                odds_fetched=run_data.get("odds_fetched", 0),
+                odds_with_lines=run_data.get("odds_with_lines"),
+                fixtures_fetched=run_data.get("fixtures_fetched"),
+                matched=run_data.get("matched"),
+                value_bets=run_data.get("value_bets_count"),
+            )
+            if run_data.get("unmatched_fx") or run_data.get("unmatched_odds"):
+                show_unmatched_samples(
+                    run_data.get("unmatched_fx", []),
+                    run_data.get("unmatched_odds", []),
+                )
+            if run_data.get("harvest_games"):
+                show_harvest_games(run_data["harvest_games"])
+            if run_data.get("matched_list") and not run_data.get("value_bets"):
+                show_matched_summary(
+                    run_data["matched_list"],
+                    run_data.get("elo_ratings", {}),
+                )
+        else:
+            st.info("Run the pipeline to see diagnostics.")
+
+    with tab_saved:
         render_saved_picks()
 
 
-def _render_all_leagues(
-    league_list, min_edge, odds_range, top_n,
-    history_days, lookahead_days, profile,
+def _render_picks(
+    league_label, min_edge, odds_range, top_n,
+    history_days, lookahead_days, best_bets_mode,
 ):
-    st.subheader("Value Bets \u2014 All Leagues")
-    st.caption("Scanning all leagues for value bets")
+    three_outcome = not is_two_outcome(league_label)
+
+    if best_bets_mode:
+        st.subheader("Top Picks")
+        st.caption("Showing the highest-quality value bets, sorted by composite quality score")
+    else:
+        st.subheader("Value Bets")
+        st.caption("Compare Elo model predictions against live sportsbook consensus odds")
 
     missing, stale = get_env_report()
     if missing:
         st.warning(
             "Missing required secrets: **" + ", ".join(missing) + "**. "
-            "Add them to your Secrets (Tools \u2192 Secrets) to enable live odds fetching."
+            "Add them in Settings to enable live odds."
         )
         return
 
-    if st.button("Find Value Bets (All Leagues)", type="primary", use_container_width=True):
+    harvest_key = sofascore_to_harvest(league_label)
+    if not harvest_key:
+        st.error(f"No odds source for: {league_label}")
+        return
+
+    if three_outcome:
+        st.warning(
+            "3-outcome market \u2014 edges may be overstated. Best side per match shown."
+        )
+
+    if st.button("Find Value Bets", type="primary", use_container_width=True):
+        value_bets, run_data = _run_pipeline(
+            league_label, harvest_key, min_edge, odds_range, top_n,
+            history_days, lookahead_days=lookahead_days,
+            dedup_per_match=three_outcome, best_bets_mode=best_bets_mode,
+        )
+
+        run_data["league_label"] = league_label
+        st.session_state["last_run_data"] = run_data
+
+        if value_bets:
+            render_pick_cards(value_bets, league_label)
+            render_save_controls(value_bets, league_label)
+
+            if run_data.get("unmatched_fx") or run_data.get("unmatched_odds"):
+                st.caption("Some games couldn't be matched \u2014 check the Diagnostics tab for details.")
+
+
+def _render_all_leagues_picks(
+    league_list, min_edge, odds_range, top_n,
+    history_days, lookahead_days, profile, best_bets_mode,
+):
+    st.subheader("Multi-League Scan")
+    st.caption("Scanning all leagues for the best value bets")
+
+    missing, stale = get_env_report()
+    if missing:
+        st.warning(
+            "Missing required secrets: **" + ", ".join(missing) + "**"
+        )
+        return
+
+    if st.button("Scan All Leagues", type="primary", use_container_width=True):
         all_value_bets = []
+        all_odds = 0
+        all_fixtures = 0
+        all_matched = 0
         progress = st.progress(0, text="Starting multi-league scan...")
         total = len(league_list)
 
@@ -253,14 +337,17 @@ def _render_all_leagues(
                 if not harvest_games:
                     continue
                 games_with_odds = count_games_with_odds(harvest_games)
+                all_odds += games_with_odds
                 if games_with_odds == 0:
                     continue
                 _, latest_dt = harvest_date_range(harvest_games)
                 latest_game_date = latest_dt.date() if latest_dt else None
                 upcoming, _ = fetch_fixtures(league, league_lookahead, latest_game_date)
+                all_fixtures += len(upcoming)
                 if not upcoming:
                     continue
                 matched = match_fixtures_to_odds(upcoming, harvest_games, league=league)
+                all_matched += len(matched)
                 if not matched:
                     continue
                 bets = compute_values(matched, elo_ratings, min_edge, odds_range)
@@ -277,66 +364,59 @@ def _render_all_leagues(
         progress.empty()
 
         if not all_value_bets:
-            st.info("No value bets found across any league with the current filters.")
+            st.info("No value bets found across any league with current filters.")
+            st.session_state["last_run_data"] = {
+                "odds_fetched": all_odds,
+                "odds_with_lines": all_odds,
+                "fixtures_fetched": all_fixtures,
+                "matched": all_matched,
+                "value_bets_count": 0,
+                "value_bets": [],
+                "league_label": "All Leagues",
+            }
             return
 
-        all_value_bets.sort(key=lambda x: x.get("edge", 0), reverse=True)
+        all_value_bets = attach_quality(all_value_bets)
+
+        if best_bets_mode:
+            all_value_bets.sort(key=lambda x: x.get("quality", 0), reverse=True)
+        else:
+            all_value_bets.sort(key=lambda x: x.get("edge", 0), reverse=True)
+
         all_value_bets = all_value_bets[:top_n]
 
-        display_value_bets_table(all_value_bets, "All Leagues")
+        st.session_state["last_run_data"] = {
+            "odds_fetched": all_odds,
+            "odds_with_lines": all_odds,
+            "fixtures_fetched": all_fixtures,
+            "matched": all_matched,
+            "value_bets_count": len(all_value_bets),
+            "value_bets": all_value_bets,
+            "league_label": "All Leagues",
+        }
+
+        render_pick_cards(all_value_bets, "All Leagues")
         render_save_controls(all_value_bets, "All Leagues")
 
 
-def _render_value_bets(
-    league_label, min_edge, odds_range, top_n, history_days, lookahead_days=3
-):
-    st.subheader("Value Bets")
-    st.caption("Compare Elo model predictions against live sportsbook consensus odds")
-
-    missing, stale = get_env_report()
-    if missing:
-        st.warning(
-            "Missing required secrets: **" + ", ".join(missing) + "**. "
-            "Add them to your Secrets (Tools \u2192 Secrets) to enable live odds fetching."
-        )
-        return
-
-    harvest_key = sofascore_to_harvest(league_label)
-    if not harvest_key:
-        st.error(f"No odds source mapping for league: {league_label}")
-        return
-
-    three_outcome = not is_two_outcome(league_label)
-    if three_outcome:
-        st.warning(
-            "This league is a 3-outcome market (home / draw / away). "
-            "The current model is 2-outcome Elo, so edges may be overstated. "
-            "Only the best side per match is shown to avoid double-counting."
-        )
-
-    if st.button("Find Value Bets", type="primary", use_container_width=True):
-        _run_pipeline(
-            league_label,
-            harvest_key,
-            min_edge,
-            odds_range,
-            top_n,
-            history_days,
-            lookahead_days=lookahead_days,
-            dedup_per_match=three_outcome,
-        )
-
-
 def _run_pipeline(
-    league_label,
-    harvest_key,
-    min_edge,
-    odds_range,
-    top_n,
-    history_days,
-    lookahead_days=3,
-    dedup_per_match=False,
+    league_label, harvest_key, min_edge, odds_range, top_n,
+    history_days, lookahead_days=3, dedup_per_match=False, best_bets_mode=False,
 ):
+    run_data = {
+        "odds_fetched": 0,
+        "odds_with_lines": None,
+        "fixtures_fetched": None,
+        "matched": None,
+        "value_bets_count": 0,
+        "value_bets": [],
+        "harvest_games": [],
+        "matched_list": [],
+        "elo_ratings": {},
+        "unmatched_fx": [],
+        "unmatched_odds": [],
+    }
+
     progress = st.progress(0, text="Starting pipeline...")
 
     clear_events_cache()
@@ -344,36 +424,32 @@ def _run_pipeline(
     try:
         progress.progress(10, text="Fetching historical results for Elo ratings...")
         elo_ratings, result_count = fetch_elo_ratings(league_label, history_days)
+        run_data["elo_ratings"] = elo_ratings
         if result_count == 0:
             st.warning(
-                f"No historical results found for {league_label}. Elo ratings will use defaults (1500)."
+                f"No historical results for {league_label}. Using default ratings."
             )
 
-        progress.progress(25, text=f"Building Elo ratings from {result_count} games...")
+        progress.progress(25, text=f"Built Elo from {result_count} games...")
 
-        progress.progress(
-            40,
-            text=f"Fetching live odds from sportsbooks ({harvest_key}, {lookahead_days} day window)...",
-        )
+        progress.progress(40, text="Fetching live odds...")
         try:
             harvest_games = fetch_harvest_odds(harvest_key, lookahead_days, league_label=league_label)
         except Exception as e:
             st.error(f"Failed to fetch odds: {e}")
             progress.empty()
-            return
+            return [], run_data
+
+        run_data["harvest_games"] = harvest_games
+        run_data["odds_fetched"] = len(harvest_games)
 
         if not harvest_games:
             progress.empty()
             explain_empty_run(0, None, None, None, min_edge, odds_range, league_label)
-            show_diagnostics(
-                odds_fetched=0,
-                odds_with_lines=0,
-                fixtures_fetched=None,
-                matched=None,
-            )
-            return
+            return [], run_data
 
         games_with_odds = count_games_with_odds(harvest_games)
+        run_data["odds_with_lines"] = games_with_odds
         earliest_dt, latest_dt = harvest_date_range(harvest_games)
 
         if games_with_odds == 0:
@@ -381,18 +457,7 @@ def _run_pipeline(
             explain_empty_run(
                 len(harvest_games), 0, None, None, min_edge, odds_range, league_label
             )
-            if earliest_dt:
-                st.info(
-                    f"Earliest scheduled game: **{earliest_dt.strftime('%b %d, %Y %H:%M UTC')}** \u2014 try again within 48 hours of that time."
-                )
-            show_diagnostics(
-                odds_fetched=len(harvest_games),
-                odds_with_lines=0,
-                fixtures_fetched=None,
-                matched=None,
-            )
-            show_harvest_games(harvest_games)
-            return
+            return [], run_data
 
         latest_game_date = latest_dt.date() if latest_dt else None
 
@@ -400,42 +465,33 @@ def _run_pipeline(
         upcoming, fixture_end = fetch_fixtures(
             league_label, lookahead_days, latest_game_date
         )
+        run_data["fixtures_fetched"] = len(upcoming)
+
         if not upcoming:
             progress.empty()
             explain_empty_run(
-                len(harvest_games), games_with_odds, 0, None, min_edge, odds_range, league_label
+                len(harvest_games), games_with_odds, 0, None,
+                min_edge, odds_range, league_label,
             )
-            show_diagnostics(
-                odds_fetched=len(harvest_games),
-                odds_with_lines=games_with_odds,
-                fixtures_fetched=0,
-                matched=None,
-            )
-            return
+            return [], run_data
 
-        progress.progress(
-            70,
-            text=f"Matching {len(upcoming)} fixtures to {games_with_odds} odds events...",
-        )
+        progress.progress(70, text=f"Matching {len(upcoming)} fixtures to {games_with_odds} odds events...")
         matched = match_fixtures_to_odds(upcoming, harvest_games, league=league_label)
+        run_data["matched"] = len(matched)
+        run_data["matched_list"] = matched
+
+        unmatched_fx, unmatched_odds = get_unmatched(upcoming, harvest_games, matched or [])
+        run_data["unmatched_fx"] = unmatched_fx
+        run_data["unmatched_odds"] = unmatched_odds
 
         if not matched:
             progress.empty()
-            unmatched_fx, unmatched_odds = get_unmatched(upcoming, harvest_games, [])
             explain_empty_run(
                 len(harvest_games), games_with_odds, len(upcoming), 0,
                 min_edge, odds_range, league_label,
                 unmatched_fixtures=unmatched_fx, unmatched_odds=unmatched_odds,
             )
-            show_diagnostics(
-                odds_fetched=len(harvest_games),
-                odds_with_lines=games_with_odds,
-                fixtures_fetched=len(upcoming),
-                matched=0,
-            )
-            show_unmatched_samples(unmatched_fx, unmatched_odds)
-            show_harvest_games(harvest_games)
-            return
+            return [], run_data
 
         progress.progress(85, text="Computing value bets...")
         value_bets = compute_values(matched, elo_ratings, min_edge, odds_range)
@@ -446,33 +502,30 @@ def _run_pipeline(
         progress.progress(100, text="Done!")
         progress.empty()
 
-        show_diagnostics(
-            odds_fetched=len(harvest_games),
-            odds_with_lines=games_with_odds,
-            fixtures_fetched=len(upcoming),
-            matched=len(matched),
-            value_bets=len(value_bets),
-        )
-
-        unmatched_fx, unmatched_odds = get_unmatched(upcoming, harvest_games, matched)
-        if unmatched_fx or unmatched_odds:
-            show_unmatched_samples(unmatched_fx, unmatched_odds)
-
         if not value_bets:
             explain_empty_run(
                 len(harvest_games), games_with_odds, len(upcoming), len(matched),
                 min_edge, odds_range, league_label,
             )
-            show_matched_summary(matched, elo_ratings)
-            return
+            run_data["value_bets_count"] = 0
+            return [], run_data
+
+        value_bets = attach_quality(value_bets)
+
+        if best_bets_mode:
+            value_bets.sort(key=lambda x: x.get("quality", 0), reverse=True)
 
         value_bets = value_bets[:top_n]
-        display_value_bets_table(value_bets, league_label)
-        render_save_controls(value_bets, league_label)
+
+        run_data["value_bets_count"] = len(value_bets)
+        run_data["value_bets"] = value_bets
+
+        return value_bets, run_data
 
     except Exception as e:
         progress.empty()
         st.error(f"Pipeline error: {e}")
+        return [], run_data
 
 
 if __name__ == "__main__":
