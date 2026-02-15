@@ -25,6 +25,7 @@ from pipeline import (
     compute_values,
     dedup_best_side,
     get_unmatched,
+    run_backtest,
 )
 from ui_helpers import (
     show_diagnostics,
@@ -37,6 +38,7 @@ from ui_helpers import (
     show_unmatched_samples,
     render_pick_cards,
     attach_quality,
+    render_backtest_results,
 )
 
 
@@ -185,8 +187,8 @@ def main():
     else:
         effective_top_n = top_n
 
-    tab_picks, tab_explore, tab_diagnostics, tab_saved = st.tabs(
-        ["Picks", "Explore", "Diagnostics", "Saved Picks"]
+    tab_picks, tab_explore, tab_backtest, tab_diagnostics, tab_saved = st.tabs(
+        ["Picks", "Explore", "Backtest", "Diagnostics", "Saved Picks"]
     )
 
     if "last_run_data" not in st.session_state:
@@ -215,6 +217,45 @@ def main():
             render_save_controls(vb, league, key_prefix="explore")
         else:
             st.info("Run the pipeline from the Picks tab to see detailed results here.")
+
+    with tab_backtest:
+        st.subheader("Model Backtest")
+        st.caption(
+            "Test the Elo model against past results. Trains on older games, "
+            "then predicts recent games to measure accuracy."
+        )
+
+        if run_all:
+            bt_league = st.selectbox(
+                "League to backtest",
+                options=all_real_leagues,
+                key="bt_league",
+                help="Pick one league to backtest.",
+            )
+        else:
+            bt_league = league_label
+
+        bt_c1, bt_c2 = st.columns(2)
+        with bt_c1:
+            bt_history = st.slider(
+                "Training period (days)",
+                30, 365, value=90, step=10,
+                key="bt_history",
+                help="How many days of older games to use for building Elo ratings.",
+            )
+        with bt_c2:
+            bt_test = st.slider(
+                "Test period (days)",
+                7, 90, value=30, step=7,
+                key="bt_test",
+                help="How many days of recent games to test predictions against.",
+            )
+
+        if st.button("Run Backtest", type="primary", use_container_width=True):
+            with st.spinner(f"Backtesting {bt_league}... fetching {bt_history + bt_test} days of results"):
+                clear_events_cache()
+                bt_result = run_backtest(bt_league, history_days=bt_history, test_days=bt_test)
+            render_backtest_results(bt_result)
 
     with tab_diagnostics:
         run_data = st.session_state.get("last_run_data")

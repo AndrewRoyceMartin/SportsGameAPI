@@ -176,6 +176,116 @@ def compute_values(
     return value_bets
 
 
+def run_backtest(
+    league_label: str,
+    history_days: int = 120,
+    test_days: int = 30,
+) -> Dict[str, Any]:
+    total_days = history_days + test_days
+    all_results = get_results_history(league=league_label, since_days=total_days)
+
+    if not all_results:
+        return {"error": "No historical results found.", "games": []}
+
+    all_results.sort(key=lambda g: g.start_time_utc)
+
+    cutoff = all_results[-1].start_time_utc - timedelta(days=test_days)
+
+    train_games = [g for g in all_results if g.start_time_utc <= cutoff]
+    test_games = [g for g in all_results if g.start_time_utc > cutoff]
+
+    if not test_games:
+        return {"error": "Not enough recent games to test against.", "games": []}
+
+    if not train_games:
+        return {"error": "Not enough training data. Try increasing history days.", "games": []}
+
+    train_dicts = [
+        _game_to_elo_dict(g) for g in train_games
+        if g.home_score is not None and g.away_score is not None
+    ]
+    ratings = build_elo_ratings(train_dicts)
+
+    results = []
+    correct = 0
+    total = 0
+    draws = 0
+    confident_correct = 0
+    confident_total = 0
+
+    rolling_dicts = list(train_dicts)
+
+    for g in test_games:
+        if g.home_score is None or g.away_score is None:
+            continue
+
+        current_ratings = build_elo_ratings(rolling_dicts)
+
+        r_home = float(current_ratings.get(g.home, 1500.0))
+        r_away = float(current_ratings.get(g.away, 1500.0))
+        p_home = elo_win_prob(r_home, r_away)
+        p_away = 1.0 - p_home
+
+        predicted_winner = g.home if p_home >= 0.5 else g.away
+        predicted_prob = max(p_home, p_away)
+
+        is_draw = g.home_score == g.away_score
+
+        if is_draw:
+            actual_winner = "Draw"
+            is_correct = None
+            draws += 1
+        elif g.home_score > g.away_score:
+            actual_winner = g.home
+            is_correct = (predicted_winner == g.home)
+        else:
+            actual_winner = g.away
+            is_correct = (predicted_winner == g.away)
+
+        if is_correct is not None:
+            total += 1
+            if is_correct:
+                correct += 1
+            if predicted_prob >= 0.60:
+                confident_total += 1
+                if is_correct:
+                    confident_correct += 1
+
+        results.append({
+            "date": g.start_time_utc.strftime("%Y-%m-%d"),
+            "home_team": g.home,
+            "away_team": g.away,
+            "home_score": g.home_score,
+            "away_score": g.away_score,
+            "predicted_winner": predicted_winner,
+            "predicted_prob": predicted_prob,
+            "actual_winner": actual_winner,
+            "correct": is_correct,
+            "is_draw": is_draw,
+            "home_elo": r_home,
+            "away_elo": r_away,
+            "p_home": p_home,
+        })
+
+        rolling_dicts.append(_game_to_elo_dict(g))
+
+    accuracy = correct / total if total > 0 else 0
+    confident_accuracy = confident_correct / confident_total if confident_total > 0 else 0
+
+    return {
+        "league": league_label,
+        "train_games": len(train_dicts),
+        "test_games": total,
+        "draws": draws,
+        "correct": correct,
+        "accuracy": accuracy,
+        "confident_total": confident_total,
+        "confident_correct": confident_correct,
+        "confident_accuracy": confident_accuracy,
+        "games": results,
+    }
+
+
 def dedup_best_side(value_bets: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     best = {}
     for vb in value_bets:

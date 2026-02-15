@@ -562,3 +562,84 @@ def render_saved_picks() -> None:
             st.info("No saved picks yet. Run the pipeline and save your best bets!")
     except Exception:
         st.info("No saved picks yet.")
+
+
+def render_backtest_results(bt: Dict[str, Any]) -> None:
+    if bt.get("error"):
+        st.warning(bt["error"])
+        return
+
+    games = bt.get("games", [])
+    if not games:
+        st.info("No games to display.")
+        return
+
+    st.subheader(f"Backtest Results \u2014 {bt['league']}")
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Training Games", bt["train_games"], help="Games used to build the Elo ratings before testing began.")
+    m2.metric("Test Games", bt["test_games"], help="Recent games the model predicted without seeing the result first.")
+    m3.metric("Overall Accuracy", f"{bt['accuracy']:.1%}", help="Percentage of test games where the model correctly picked the winner.")
+    m4.metric(
+        "Confident Picks",
+        f"{bt['confident_accuracy']:.1%}" if bt["confident_total"] > 0 else "N/A",
+        help=f"Accuracy when the model was 60%+ confident. {bt['confident_correct']}/{bt['confident_total']} correct.",
+    )
+
+    st.divider()
+
+    draws = bt.get("draws", 0)
+    if draws > 0:
+        st.caption(f"{draws} draw(s) excluded from accuracy \u2014 the model is 2-outcome only.")
+
+    decisive_games = [g for g in games if g.get("correct") is not None]
+    correct_count = sum(1 for g in decisive_games if g["correct"])
+    wrong_count = len(decisive_games) - correct_count
+
+    chart_items = [("Correct", correct_count), ("Wrong", wrong_count)]
+    if draws > 0:
+        chart_items.append(("Draw", draws))
+
+    chart_data = pd.DataFrame({
+        "Result": [r for r, _ in chart_items],
+        "Count": [c for _, c in chart_items],
+    })
+    st.bar_chart(chart_data, x="Result", y="Count", use_container_width=True)
+
+    prob_buckets = {"50-55%": [0.50, 0.55], "55-60%": [0.55, 0.60], "60-65%": [0.60, 0.65],
+                    "65-70%": [0.65, 0.70], "70-80%": [0.70, 0.80], "80%+": [0.80, 1.01]}
+    bucket_rows = []
+    for label, (lo, hi) in prob_buckets.items():
+        bucket_games = [g for g in decisive_games if lo <= g["predicted_prob"] < hi]
+        if bucket_games:
+            bucket_correct = sum(1 for g in bucket_games if g["correct"])
+            bucket_rows.append({
+                "Confidence": label,
+                "Games": len(bucket_games),
+                "Correct": bucket_correct,
+                "Accuracy": f"{bucket_correct / len(bucket_games):.0%}",
+            })
+
+    if bucket_rows:
+        st.markdown("**Accuracy by confidence level**")
+        st.dataframe(pd.DataFrame(bucket_rows), use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.markdown("**Individual game results**")
+
+    rows = []
+    for g in games:
+        rows.append({
+            "Date": g["date"],
+            "Match": f"{g['home_team']} vs {g['away_team']}",
+            "Score": f"{g['home_score']}\u2013{g['away_score']}",
+            "Predicted": g["predicted_winner"],
+            "Prob": f"{g['predicted_prob']:.1%}",
+            "Actual": g["actual_winner"],
+            "Result": "\u2705" if g["correct"] is True else ("\u2796" if g["correct"] is None else "\u274c"),
+            "Elo H": f"{g['home_elo']:.0f}",
+            "Elo A": f"{g['away_elo']:.0f}",
+        })
+
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, hide_index=True)
