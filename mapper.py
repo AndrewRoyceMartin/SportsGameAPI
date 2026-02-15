@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import re
+import unicodedata
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -23,13 +24,12 @@ _ALIASES = {
     "inter": "internazionale",
     "inter milan": "internazionale",
     "atletico madrid": "atletico de madrid",
-    "atltico madrid": "atletico de madrid",
     "rb leipzig": "rasenballsport leipzig",
     "ac milan": "milan",
     "spurs": "tottenham",
     "wolves": "wolverhampton",
     "bayern": "bayern munich",
-    "bayern mnchen": "bayern munich",
+    "bayern munchen": "bayern munich",
     "barca": "barcelona",
     "real": "real madrid",
     "juve": "juventus",
@@ -111,6 +111,8 @@ _STRIP_SUFFIXES = re.compile(
 
 def _normalise(name: str) -> str:
     name = name.lower().strip()
+    name = unicodedata.normalize("NFKD", name)
+    name = name.encode("ascii", "ignore").decode("ascii")
     if "," in name:
         parts = [p.strip() for p in name.split(",", 1)]
         name = f"{parts[1]} {parts[0]}"
