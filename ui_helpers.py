@@ -245,10 +245,11 @@ def display_value_bets_table(
             key="visible_cols",
         )
 
+    has_league_col = any("league" in vb for vb in value_bets)
+
     rows = []
     for vb in value_bets:
-        rows.append(
-            {
+        row = {
                 "Match": f"{vb['home_team']} vs {vb['away_team']}",
                 "Date": vb["date"],
                 "Time": vb["time"],
@@ -263,7 +264,9 @@ def display_value_bets_table(
                 "_conf": vb["match_confidence"],
                 "sort_time": vb["date"] + " " + vb["time"],
             }
-        )
+        if has_league_col:
+            row["League"] = vb.get("league", "")
+        rows.append(row)
 
     df = pd.DataFrame(rows)
 
@@ -289,6 +292,8 @@ def display_value_bets_table(
     df["Confidence"] = df["_conf"].apply(lambda x: f"{x:.0f}%")
 
     display_cols = [c for c in visible_cols if c in df.columns]
+    if has_league_col and "League" not in display_cols:
+        display_cols = ["League"] + display_cols
     if not display_cols:
         display_cols = DEFAULT_COLUMNS
 
