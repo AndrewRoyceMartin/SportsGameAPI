@@ -11,6 +11,7 @@ from league_map import (
     is_separator,
     ALL_SPORTS,
     LEAGUE_SPORT,
+    SPORT_DISPLAY_TO_KEY,
 )
 from league_defaults import DEFAULTS, RUN_PROFILES, apply_profile
 from stats_provider import clear_events_cache
@@ -50,12 +51,13 @@ def main():
     with st.sidebar:
         st.header("Settings")
 
-        sport_filter = st.selectbox(
+        sport_display = st.selectbox(
             "Sport",
             options=ALL_SPORTS,
             index=0,
             help="Filter leagues by sport category.",
         )
+        sport_filter = SPORT_DISPLAY_TO_KEY.get(sport_display, "All")
         league_search = st.text_input(
             "Search leagues",
             value="",

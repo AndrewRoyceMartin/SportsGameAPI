@@ -42,7 +42,18 @@ LEAGUE_SPORT = {
     "UFC": "MMA",
 }
 
-ALL_SPORTS = ["All"] + sorted(set(LEAGUE_SPORT.values()))
+_SPORT_LEAGUES = {}
+for _lg, _sp in LEAGUE_SPORT.items():
+    _SPORT_LEAGUES.setdefault(_sp, []).append(_lg)
+
+ALL_SPORTS = ["All"] + [
+    f"{sport} ({', '.join(leagues)})"
+    for sport, leagues in sorted(_SPORT_LEAGUES.items())
+]
+
+SPORT_DISPLAY_TO_KEY = {"All": "All"}
+for sport, leagues in _SPORT_LEAGUES.items():
+    SPORT_DISPLAY_TO_KEY[f"{sport} ({', '.join(leagues)})"] = sport
 
 
 def sofascore_to_harvest(league_label: str) -> str | None:
