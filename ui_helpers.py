@@ -15,12 +15,13 @@ from mapper import _name_score, _parse_iso
 
 
 def compute_bet_quality(vb: Dict[str, Any]) -> int:
-    edge = vb.get("edge", 0)
+    edge_val = vb.get("edge", 0)
     ev = vb.get("ev_per_unit", 0)
     conf = vb.get("match_confidence", 0)
     odds = vb.get("odds_decimal", 0)
+    min_games = vb.get("min_games", 999)
 
-    edge_score = min(edge / 0.20, 1.0) * 35
+    edge_score = min(edge_val / 0.20, 1.0) * 35
 
     ev_score = min(max(ev, 0) / 0.30, 1.0) * 25
 
@@ -36,6 +37,12 @@ def compute_bet_quality(vb: Dict[str, Any]) -> int:
         odds_score = 2
 
     total = edge_score + ev_score + conf_score + odds_score
+
+    if min_games < 10:
+        total *= 0.90
+    elif min_games < 20:
+        total *= 0.95
+
     return max(0, min(100, int(round(total))))
 
 
@@ -328,6 +335,35 @@ def show_matched_summary(
             )
 
 
+def _build_pick_explainer(vb: Dict[str, Any]) -> str:
+    parts = []
+    model_p = vb.get("model_prob", 0)
+    implied_p = vb.get("implied_prob", 0)
+    edge_val = vb.get("edge", 0)
+    min_games = vb.get("min_games", 0)
+
+    parts.append(
+        f"Model probability {model_p:.0%} vs implied {implied_p:.0%} = edge +{edge_val:.0%}"
+    )
+
+    if min_games >= 20:
+        parts.append(f"Ratings mature: both teams {min_games}+ games in window")
+    elif min_games >= 10:
+        parts.append(f"Ratings developing: min {min_games} games (moderate confidence)")
+    else:
+        parts.append(f"Early-season warning: only {min_games} games for one team")
+
+    return " | ".join(parts)
+
+
+def _maturity_badge(min_games: int) -> str:
+    if min_games >= 20:
+        return "Mature"
+    if min_games >= 10:
+        return "Developing"
+    return "Early"
+
+
 def render_pick_cards(
     value_bets: List[Dict[str, Any]], league_label: str
 ) -> None:
@@ -350,15 +386,17 @@ def render_pick_cards(
         q = vb.get("quality", 0)
         q_label = quality_label(q)
         tier = quality_tier(q)
+        min_games = vb.get("min_games", 0)
 
         with st.container(border=True):
             top_left, top_right = st.columns([3, 1])
             with top_left:
                 st.markdown(f"### {vb['home_team']} vs {vb['away_team']}")
                 league_display = vb.get("league", league_label)
-                st.caption(f"{league_display} \u2022 {vb['date']} \u2022 {vb['time']}")
+                maturity = _maturity_badge(min_games)
+                st.caption(f"{league_display} \u2022 {vb['date']} \u2022 {vb['time']} \u2022 Ratings: {maturity}")
             with top_right:
-                st.metric("Quality", f"{q}/100", help="Composite score (0-100) combining edge strength, EV, match confidence, and odds range. Higher = more bettable.")
+                st.metric("Quality", f"{q}/100", help="Composite score (0-100) combining edge strength, EV, match confidence, odds range, and rating maturity. Higher = more bettable.")
                 st.caption(f"Tier {tier} \u2022 {q_label}")
 
             c1, c2, c3, c4, c5 = st.columns(5)
@@ -368,10 +406,14 @@ def render_pick_cards(
             c4.metric("EV/unit", f"{vb['ev_per_unit']:.3f}", help="Expected profit per $1 staked. E.g. 0.10 means you expect to make $0.10 profit for every $1 bet over time.")
             c5.metric("Model %", f"{vb['model_prob']:.1%}", help="The Elo model's estimated chance this pick wins the match.")
 
-            det1, det2, det3 = st.columns(3)
+            explainer = _build_pick_explainer(vb)
+            st.caption(f"Why: {explainer}")
+
+            det1, det2, det3, det4 = st.columns(4)
             det1.caption(f"Implied: {vb['implied_prob']:.1%}")
             det2.caption(f"Elo: {vb['home_elo']:.0f} / {vb['away_elo']:.0f}")
             det3.caption(f"Match confidence: {vb['match_confidence']:.0f}%")
+            det4.caption(f"Games: {vb.get('home_games', '?')}/{vb.get('away_games', '?')}")
 
 
 def render_save_controls(
@@ -562,6 +604,126 @@ def render_saved_picks() -> None:
             st.info("No saved picks yet. Run the pipeline and save your best bets!")
     except Exception:
         st.info("No saved picks yet.")
+
+
+def render_walkforward_results(wf: Dict[str, Any]) -> None:
+    if wf.get("error"):
+        st.warning(wf["error"])
+        return
+
+    folds = wf.get("folds", [])
+    if not folds:
+        st.info("No folds completed.")
+        return
+
+    st.subheader(f"Walk-Forward Validation \u2014 {wf['league']}")
+    st.caption(f"{wf['num_folds']} folds completed")
+
+    s = wf["summary"]
+    baselines = wf.get("baselines", {})
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric(
+        "Accuracy",
+        f"{s['accuracy_mean']:.1%} \u00b1 {s['accuracy_std']:.1%}",
+        help="Mean accuracy across all folds \u00b1 standard deviation. Lower variance = more reliable.",
+    )
+    m2.metric(
+        "Brier Score",
+        f"{s['brier_mean']:.4f} \u00b1 {s['brier_std']:.4f}",
+        help="Mean Brier score across folds (lower = better calibrated). 0.25 is coin-flip baseline.",
+    )
+    m3.metric(
+        "Log Loss",
+        f"{s['log_loss_mean']:.4f} \u00b1 {s['log_loss_std']:.4f}",
+        help="Mean log loss across folds (lower = better). 0.693 is coin-flip baseline.",
+    )
+    bl_mean = s.get("bucket_lift_mean")
+    bl_std = s.get("bucket_lift_std")
+    m4.metric(
+        "Bucket Lift",
+        f"{bl_mean:+.1%} \u00b1 {bl_std:.1%}" if bl_mean is not None else "N/A",
+        help="How much better high-confidence picks (60%+) perform vs overall, averaged across folds.",
+    )
+
+    naive_acc = baselines.get("naive_elo_accuracy_mean")
+    naive_brier = baselines.get("naive_elo_brier_mean")
+    home_acc = baselines.get("always_home_acc")
+
+    st.markdown("**Baselines**")
+    b1, b2, b3, b4 = st.columns(4)
+    if naive_acc is not None:
+        b1.metric(
+            "Naive Elo Accuracy",
+            f"{naive_acc:.1%}",
+            delta=f"{s['accuracy_mean'] - naive_acc:+.1%}",
+            help="Baseline accuracy using default Elo params (K=20, HomeAdv=65, Scale=400, no recency/MOV). Delta shows your improvement.",
+        )
+    if naive_brier is not None:
+        b2.metric(
+            "Naive Elo Brier",
+            f"{naive_brier:.4f}",
+            delta=f"{s['brier_mean'] - naive_brier:+.4f}",
+            delta_color="inverse",
+            help="Baseline Brier with default params. Negative delta = your model calibrates better.",
+        )
+    b3.metric(
+        "Coin-flip Brier",
+        "0.2500",
+        delta=f"{s['brier_mean'] - 0.25:+.4f}",
+        delta_color="inverse",
+        help="Brier score if you predicted 50/50 every game. You should beat this easily.",
+    )
+    if home_acc is not None:
+        b4.metric(
+            "Always-Home Baseline",
+            f"{home_acc:.1%}",
+            delta=f"{s['accuracy_mean'] - home_acc:+.1%}",
+            help="Accuracy if you always picked the home team. Your model should beat this.",
+        )
+
+    conf_rows = []
+    for t in [60, 65, 70]:
+        accs = s.get(f"conf_{t}_accs", [])
+        if accs:
+            mean_acc = sum(accs) / len(accs)
+            counts = [f.get("conf_counts", {}).get(t, 0) for f in folds]
+            total_n = sum(counts)
+            conf_rows.append({
+                "Threshold": f"\u2265{t}%",
+                "Avg Accuracy": f"{mean_acc:.1%}",
+                "Total Games": total_n,
+                "Folds With Data": len(accs),
+            })
+    if conf_rows:
+        st.markdown("**High-confidence accuracy by threshold**")
+        st.dataframe(pd.DataFrame(conf_rows), use_container_width=True, hide_index=True)
+
+    st.divider()
+    st.markdown("**Per-fold details**")
+    fold_rows = []
+    for f in folds:
+        fold_rows.append({
+            "Fold": f["fold"],
+            "Period": f"{f['test_start']} \u2192 {f['test_end']}",
+            "Train": f["train_games"],
+            "Test": f["test_games"],
+            "Accuracy": f"{f['accuracy']:.1%}",
+            "Brier": f"{f['brier_score']:.4f}",
+            "Log Loss": f"{f['log_loss']:.4f}",
+            "Lift": f"{f['bucket_lift']:+.1%}" if f["bucket_lift"] is not None else "N/A",
+        })
+    st.dataframe(pd.DataFrame(fold_rows), use_container_width=True, hide_index=True)
+
+    ep = wf.get("elo_params")
+    if ep:
+        with st.expander("Elo Parameters Used"):
+            st.markdown(
+                f"**K:** {ep['k']}  &nbsp;|&nbsp;  "
+                f"**Home Adv:** {ep['home_adv']}  &nbsp;|&nbsp;  "
+                f"**Scale:** {ep['scale']}  &nbsp;|&nbsp;  "
+                f"**Recency Half-life:** {ep['recency_half_life'] or 'Off'} days"
+            )
 
 
 def render_backtest_results(bt: Dict[str, Any]) -> None:

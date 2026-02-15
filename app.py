@@ -26,6 +26,7 @@ from pipeline import (
     dedup_best_side,
     get_unmatched,
     run_backtest,
+    run_walkforward_backtest,
 )
 from ui_helpers import (
     show_diagnostics,
@@ -39,6 +40,7 @@ from ui_helpers import (
     render_pick_cards,
     attach_quality,
     render_backtest_results,
+    render_walkforward_results,
 )
 
 
@@ -243,27 +245,74 @@ def main():
         else:
             bt_league = league_label
 
-        bt_c1, bt_c2 = st.columns(2)
-        with bt_c1:
-            bt_history = st.slider(
-                "Training period (days)",
-                30, 365, value=90, step=10,
-                key="bt_history",
-                help="How many days of older games to use for building Elo ratings.",
-            )
-        with bt_c2:
-            bt_test = st.slider(
-                "Test period (days)",
-                7, 90, value=30, step=7,
-                key="bt_test",
-                help="How many days of recent games to test predictions against.",
-            )
+        bt_mode = st.radio(
+            "Backtest mode",
+            ["Single split", "Walk-forward (multi-fold)"],
+            horizontal=True,
+            key="bt_mode",
+            help="Single split tests one period. Walk-forward runs multiple overlapping folds for more reliable results.",
+        )
 
-        if st.button("Run Backtest", type="primary", use_container_width=True):
-            with st.spinner(f"Backtesting {bt_league}... fetching {bt_history + bt_test} days of results"):
-                clear_events_cache()
-                bt_result = run_backtest(bt_league, history_days=bt_history, test_days=bt_test)
-            render_backtest_results(bt_result)
+        if bt_mode == "Single split":
+            bt_c1, bt_c2 = st.columns(2)
+            with bt_c1:
+                bt_history = st.slider(
+                    "Training period (days)",
+                    30, 365, value=90, step=10,
+                    key="bt_history",
+                    help="How many days of older games to use for building Elo ratings.",
+                )
+            with bt_c2:
+                bt_test = st.slider(
+                    "Test period (days)",
+                    7, 90, value=30, step=7,
+                    key="bt_test",
+                    help="How many days of recent games to test predictions against.",
+                )
+
+            if st.button("Run Backtest", type="primary", use_container_width=True, key="run_bt_single"):
+                with st.spinner(f"Backtesting {bt_league}... fetching {bt_history + bt_test} days of results"):
+                    clear_events_cache()
+                    bt_result = run_backtest(bt_league, history_days=bt_history, test_days=bt_test)
+                render_backtest_results(bt_result)
+        else:
+            wf_c1, wf_c2, wf_c3 = st.columns(3)
+            with wf_c1:
+                wf_train = st.slider(
+                    "Training window (days)",
+                    60, 365, value=180, step=30,
+                    key="wf_train",
+                    help="How many days of training data per fold.",
+                )
+            with wf_c2:
+                wf_test = st.slider(
+                    "Test window (days)",
+                    14, 90, value=30, step=7,
+                    key="wf_test",
+                    help="How many days to test per fold.",
+                )
+            with wf_c3:
+                wf_folds = st.slider(
+                    "Number of folds",
+                    2, 8, value=4, step=1,
+                    key="wf_folds",
+                    help="More folds = more reliable but needs more data.",
+                )
+
+            total_needed = wf_train + wf_test * wf_folds
+            st.caption(f"Needs ~{total_needed} days of historical data")
+
+            if st.button("Run Walk-Forward", type="primary", use_container_width=True, key="run_bt_wf"):
+                with st.spinner(f"Walk-forward backtest on {bt_league}... {wf_folds} folds"):
+                    clear_events_cache()
+                    wf_result = run_walkforward_backtest(
+                        bt_league,
+                        total_days=total_needed,
+                        train_days=wf_train,
+                        test_days=wf_test,
+                        folds=wf_folds,
+                    )
+                render_walkforward_results(wf_result)
 
     with tab_diagnostics:
         run_data = st.session_state.get("last_run_data")
@@ -383,7 +432,7 @@ def _render_all_leagues_picks(
 
             try:
                 clear_events_cache()
-                elo_ratings, _ = fetch_elo_ratings(league, league_history)
+                elo_ratings, league_gc, _ = fetch_elo_ratings(league, league_history)
                 harvest_games = fetch_harvest_odds(harvest_key, league_lookahead, league_label=league)
                 if not harvest_games:
                     continue
@@ -401,7 +450,7 @@ def _render_all_leagues_picks(
                 all_matched += len(matched)
                 if not matched:
                     continue
-                bets = compute_values(matched, elo_ratings, min_edge, odds_range, league=league)
+                bets = compute_values(matched, elo_ratings, min_edge, odds_range, league=league, game_counts=league_gc)
                 if three_outcome and bets:
                     bets = dedup_best_side(bets)
                 for b in bets:
@@ -474,7 +523,7 @@ def _run_pipeline(
 
     try:
         progress.progress(10, text="Fetching historical results for Elo ratings...")
-        elo_ratings, result_count = fetch_elo_ratings(league_label, history_days)
+        elo_ratings, game_counts, result_count = fetch_elo_ratings(league_label, history_days)
         run_data["elo_ratings"] = elo_ratings
         if result_count == 0:
             st.warning(
@@ -545,7 +594,7 @@ def _run_pipeline(
             return [], run_data
 
         progress.progress(85, text="Computing value bets...")
-        value_bets = compute_values(matched, elo_ratings, min_edge, odds_range, league=league_label)
+        value_bets = compute_values(matched, elo_ratings, min_edge, odds_range, league=league_label, game_counts=game_counts)
 
         if dedup_per_match and value_bets:
             value_bets = dedup_best_side(value_bets)

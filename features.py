@@ -60,7 +60,7 @@ def build_elo_ratings(
     use_mov: bool = True,
     recency_half_life: float = 0.0,
     use_dynamic_k: bool = True,
-) -> Dict[str, float]:
+) -> Tuple[Dict[str, float], Dict[str, int]]:
     games_sorted = sorted(games, key=lambda g: g["date_utc"] or "")
     ratings: Dict[str, float] = {}
     game_counts: Dict[str, int] = {}
@@ -121,7 +121,7 @@ def build_elo_ratings(
         game_counts[h] += 1
         game_counts[a] += 1
 
-    return ratings
+    return ratings, game_counts
 
 
 def elo_win_prob(

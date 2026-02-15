@@ -74,7 +74,8 @@ SofaScore provides fixtures/results via sport-specific endpoints (basketball, ic
 - **Best Bets Mode**: Toggle (default ON) that auto-sorts by quality, limits to top 10, locks defaults
 - **Bet Quality scoring**: Composite 0-100 score from edge (35%), EV (25%), confidence (20%), odds sanity (20%)
 - **Quality tiers**: A (80+) = Strong, B (60-79) = Good, C (<60) = Fair/Weak
-- **Card-based picks**: Match details, quality badge, key stats (edge, EV, model %) per pick
+- **Rating maturity penalty**: Quality score penalized for teams with few games (0.90x if <10, 0.95x if <20)
+- **Card-based picks**: Match details, quality badge, maturity badge (Mature/Developing/Early), "Why" explainer text, games played counts per pick
 - **Simplified sidebar**: Basic controls always visible (sport, league, profile, Best Bets Mode) + Advanced expander
 - **Sport filter**: Filter leagues by sport category (All, Basketball, Football, Hockey, MMA, Soccer)
 - **Search**: Live text filtering of league names
@@ -99,6 +100,8 @@ SofaScore provides fixtures/results via sport-specific endpoints (basketball, ic
 - **Margin-of-victory weighting**: Blowouts update Elo more than close games using log(MOV+1) with auto-correction for rating gaps
 - **Recency decay**: Older training games have reduced K via exponential decay with configurable half-life per league
 - **Backtest scoring**: Brier score, log loss, bucket lift (confident vs overall accuracy delta)
+- **Walk-forward validation**: Multi-fold backtesting with mean±std of all metrics, naive Elo baseline comparison, always-home baseline, per-fold detail table
+- **Baseline comparisons**: Naive Elo (K=20, HomeAdv=65, Scale=400, no MOV/recency), always-pick-home, coin-flip Brier
 
 ## UI Tabs
 1. **Picks** - Card-based shortlist of top value bets with quality badges and save controls

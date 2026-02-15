@@ -1,0 +1,147 @@
+Nice — that’s the right bundle of upgrades. Now the job is to **prove** the changes helped (and didn’t quietly introduce leakage/overfitting), then **lock the best parameter sets per league**.
+
+Here’s how to validate and push accuracy + bet-quality further, without adding “heavy” features.
+
+---
+
+## 1) Verify the backtest is measuring the right thing
+
+### A) Avoid leakage
+
+Make sure **no future games** influence the rating before a prediction is scored.
+
+Checklist:
+
+* Training cut-off is strictly `< test_start`
+* In the test loop: **predict → score → then update Elo with the result**
+* Any recency weighting uses the game date relative to **the update moment**, not relative to “today” in a way that accidentally gives future games extra weight.
+
+### B) Use the right baselines
+
+For Brier / log loss, add these baselines per league:
+
+* **Always-pick-favourite** baseline accuracy
+* **Implied-prob from odds** baseline (if available historically)
+* **Naive Elo** baseline (old settings)
+
+If your tuned model beats naive Elo on Brier/log loss but only slightly on accuracy, that’s still a win (it usually means *better probability calibration* → better EV decisions).
+
+---
+
+## 2) Do walk-forward cross-validation (the most important next step)
+
+A single 90/30 split can flatter parameters.
+
+Do **3–6 folds**, walk-forward:
+
+* Fold 1: train 180d → test next 30d
+* Fold 2: train 180d ending 30d later → test next 30d
+* etc.
+
+Report:
+
+* mean + standard deviation of **Accuracy, Brier, LogLoss, BucketLift**
+* and **High-confidence accuracy** (e.g., p ≥ 0.60, 0.65, 0.70)
+
+If a league’s parameters are “real”, they stay strong across folds.
+
+---
+
+## 3) Re-tune with scoring rules, not accuracy
+
+For parameter selection, optimise:
+
+* **Primary:** Log Loss (or Brier if you prefer)
+* **Secondary:** BucketLift (high-confidence separation)
+* **Guardrail:** Accuracy must not drop below baseline by more than X%
+
+That aligns the model with value betting.
+
+---
+
+## 4) Improve “best bets” using calibration + uncertainty
+
+Now that you have calibrated probabilities:
+
+### A) Gate by calibrated confidence
+
+Instead of “confidence >= 60%” globally, use per-league gates like:
+
+* `p_cal >= 0.62` (NBA)
+* `p_cal >= 0.58` (NHL)
+  …based on where bucket accuracy actually jumps.
+
+### B) Add a “rating maturity” penalty
+
+Early-season / low-games teams create noisy edges.
+
+Adjust bet quality with a small penalty if either team has < N games:
+
+* `quality *= 0.90` if min_games < 10
+* `quality *= 0.95` if min_games < 20
+
+This cuts a lot of false “value” picks.
+
+---
+
+## 5) GUI changes that will make this feel *obviously usable*
+
+If your goal is “guide me to the best bets”, your UI should make **one screen** answer:
+
+> “What should I bet, why, and how strong is the evidence?”
+
+### A) Add a “Bet Slip” panel (top-right)
+
+For the currently selected pick:
+
+* Pick + odds + implied %
+* Model % (calibrated)
+* Edge + EV/unit
+* Confidence bucket performance (from backtest)
+* League parameter set used (collapsed)
+
+### B) Add a “Proof” badge next to each pick
+
+Example:
+
+* **“Bucket 70–80%: 73% win rate (n=128)”**
+* Or if sample size low: **“Low sample (n<30)”**
+
+This instantly builds trust and prevents overconfidence.
+
+### C) Add a “Why this is here” explainer per pick
+
+One-liners:
+
+* “Model probability 71% vs implied 59% → edge +12%”
+* “High-confidence bucket historically +9% over baseline”
+* “Ratings mature: both teams 24+ games in window”
+
+### D) Add “Show only bets with evidence”
+
+Toggle filters:
+
+* Minimum sample size per bucket (e.g., n ≥ 50)
+* Minimum calibrated probability threshold
+* Exclude early-season low-games teams
+
+---
+
+## 6) What I want you to paste next (so I can be precise)
+
+Post the new **Backtest summary output** for one league (e.g., NBA) and one AU league (e.g., NRL):
+
+* Accuracy overall
+* Accuracy for p ≥ 0.60 / 0.65 / 0.70
+* Brier
+* Log loss
+* BucketLift
+* counts (train games / test games / draws)
+
+With that, I’ll tell you:
+
+* whether calibration improved,
+* where your confidence thresholds *should* be,
+* and which leagues need parameter tightening (often K / half-life).
+
+If you want, paste your `ELO_PARAMS` dict too — I’ll sanity-check the ranges (it’s easy to accidentally over-weight MOV or decay and make ratings twitchy).
