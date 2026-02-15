@@ -375,7 +375,7 @@ def render_pick_cards(
 
 
 def render_save_controls(
-    value_bets: List[Dict[str, Any]], league_label: str
+    value_bets: List[Dict[str, Any]], league_label: str, key_prefix: str = "picks"
 ) -> None:
     from store import save_picks, init_db
 
@@ -387,7 +387,7 @@ def render_save_controls(
         )
         allow_save = st.checkbox(
             "I understand and want to save these picks anyway",
-            key=f"exp_save_{league_label}",
+            key=f"exp_save_{key_prefix}_{league_label}",
         )
     else:
         allow_save = True
@@ -395,7 +395,7 @@ def render_save_controls(
     col1, col2 = st.columns([1, 3])
     with col1:
         save_disabled = not allow_save
-        if st.button("Save All Picks", type="secondary", disabled=save_disabled, key=f"save_{league_label}"):
+        if st.button("Save All Picks", type="secondary", disabled=save_disabled, key=f"save_{key_prefix}_{league_label}"):
             try:
                 init_db()
                 for vb in value_bets:

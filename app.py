@@ -210,7 +210,7 @@ def main():
             st.subheader(f"All Results \u2014 {league}")
             st.caption(f"{len(vb)} value bet(s) found")
             display_value_bets_table(vb, league)
-            render_save_controls(vb, league)
+            render_save_controls(vb, league, key_prefix="explore")
         else:
             st.info("Run the pipeline from the Picks tab to see detailed results here.")
 
