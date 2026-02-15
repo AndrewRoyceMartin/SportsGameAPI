@@ -23,13 +23,13 @@ _ALIASES = {
     "inter": "internazionale",
     "inter milan": "internazionale",
     "atletico madrid": "atletico de madrid",
-    "atlético madrid": "atletico de madrid",
+    "atltico madrid": "atletico de madrid",
     "rb leipzig": "rasenballsport leipzig",
     "ac milan": "milan",
     "spurs": "tottenham",
     "wolves": "wolverhampton",
     "bayern": "bayern munich",
-    "bayern münchen": "bayern munich",
+    "bayern mnchen": "bayern munich",
     "barca": "barcelona",
     "real": "real madrid",
     "juve": "juventus",
@@ -96,8 +96,10 @@ _ALIASES = {
     "taipans": "cairns taipans",
     "bullets": "brisbane bullets",
     "illawarra hawks": "illawarra hawks",
-    "united": "melbourne united",
     "jackjumpers": "tasmania jackjumpers",
+    "wb": "western bulldogs",
+    "w bulldogs": "western bulldogs",
+    "western dogs": "western bulldogs",
     "phoenix nbl": "south east melbourne phoenix",
 }
 
@@ -123,8 +125,8 @@ def _normalise(name: str) -> str:
 
 
 def _expand(name: str) -> str:
-    low = name.lower().strip()
-    return _ALIASES.get(low, low)
+    key = _normalise(name)
+    return _ALIASES.get(key, key)
 
 
 def _name_score(a: str, b: str) -> int:

@@ -1,0 +1,84 @@
+your mapper.py is already doing most of the heavy lifting for AFL/NRL/NBL. You’ve already got the key AFL normalisations in _ALIASES:
+
+carlton -> carlton blues
+
+st kilda -> st kilda saints
+
+gws giants -> greater western sydney giants
+
+gold coast / suns -> gold coast suns
+
+plus Hawks/Cats/Pies/etc.
+
+So the next fixes are about robustness and avoiding accidental mis-maps, not “add AFL aliases”.
+
+1) Make alias lookup use normalised keys (important)
+
+Right now _expand() does:
+
+low = name.lower().strip()
+return _ALIASES.get(low, low)
+
+
+That fails if the incoming string has punctuation, double spaces, weird characters, hyphens, etc. (Sportsbet is messy: extra spaces, NBSPs, hyphenation, etc.). You already normalise elsewhere — just use it for alias keys.
+
+Patch
+
+Change _expand() to:
+
+def _expand(name: str) -> str:
+    key = _normalise(name)
+    return _ALIASES.get(key, key)
+
+
+Then ensure _ALIASES keys are in normalised form (most of yours already are).
+
+This single change typically fixes “looks identical but won’t match” cases.
+
+2) Remove or scope this alias — it’s dangerous
+
+You currently have:
+
+"united": "melbourne united",
+
+
+That will absolutely create false matches in football/soccer (and even other leagues) because “United” is everywhere. It’s a classic silent-bug source.
+
+Safer options (pick one)
+
+Option A (recommended): delete it
+Just remove "united": "melbourne united" and keep explicit NBL mappings like "melbourne united": "melbourne united" (you don’t even need that because normalisation already handles it).
+
+Option B: scope it to NBL only
+If you really want “United” shorthand, only apply it when league == "NBL" (or AU leagues) inside _expand().
+
+3) Add 2–3 AFL abbreviations that Sportsbet uses
+
+Sportsbet often uses shortened forms that your current AFL mapping doesn’t cover:
+
+Add these to _ALIASES:
+
+"gold coast suns": "gold coast suns",   # harmless, but keeps keys consistent
+"gws": "greater western sydney giants", # you already have this ✅
+"wb": "western bulldogs",               # sometimes appears
+"w bulldogs": "western bulldogs",
+"western dogs": "western bulldogs",
+
+
+Not all will be needed, but they’re low-risk.
+
+4) Don’t forget the real reason AFL was “0” in the app
+
+Your mapper is fine — the app was just not fetching far enough ahead.
+
+Update league_defaults.py
+
+Set AFL lookahead to 21:
+
+"AFL": {
+    ...
+    "lookahead_days": 21,
+}
+
+
+Otherwise AFL preseason games starting Feb 25 won’t show up with the default 7-day window.
