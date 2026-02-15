@@ -62,14 +62,6 @@ def main():
         )
         sport_filter = SPORT_DISPLAY_TO_KEY.get(sport_display, "All")
 
-        if "prev_sport" not in st.session_state:
-            st.session_state.prev_sport = sport_filter
-        if st.session_state.prev_sport != sport_filter:
-            st.session_state.prev_sport = sport_filter
-            st.session_state.pop("league_select", None)
-            st.session_state.pop("league_search", None)
-            st.rerun()
-
         league_search = st.text_input(
             "Search leagues",
             value="",
@@ -84,6 +76,11 @@ def main():
             st.stop()
 
         league_options = ["All"] + leagues
+
+        stored_league = st.session_state.get("league_select")
+        if stored_league and stored_league not in league_options:
+            st.session_state.pop("league_select", None)
+
         default_idx = league_options.index("NBA") if "NBA" in league_options else 0
         league_label = st.selectbox(
             "League",
