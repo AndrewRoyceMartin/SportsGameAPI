@@ -358,15 +358,15 @@ def render_pick_cards(
                 league_display = vb.get("league", league_label)
                 st.caption(f"{league_display} \u2022 {vb['date']} \u2022 {vb['time']}")
             with top_right:
-                st.metric("Quality", f"{q}/100")
+                st.metric("Quality", f"{q}/100", help="Composite score (0-100) combining edge strength, EV, match confidence, and odds range. Higher = more bettable.")
                 st.caption(f"Tier {tier} \u2022 {q_label}")
 
             c1, c2, c3, c4, c5 = st.columns(5)
-            c1.metric("Pick", vb["selection"])
-            c2.metric("Odds", f"{vb['odds_decimal']:.2f}")
-            c3.metric("Edge", f"{vb['edge']:.1%}")
-            c4.metric("EV/unit", f"{vb['ev_per_unit']:.3f}")
-            c5.metric("Model %", f"{vb['model_prob']:.1%}")
+            c1.metric("Pick", vb["selection"], help="The team or player the model says has the best value for this match.")
+            c2.metric("Odds", f"{vb['odds_decimal']:.2f}", help="Consensus decimal odds from sportsbooks (median across all available books).")
+            c3.metric("Edge", f"{vb['edge']:.1%}", help="Model probability minus implied probability. Higher edge = bigger disagreement with the market in your favour.")
+            c4.metric("EV/unit", f"{vb['ev_per_unit']:.3f}", help="Expected profit per $1 staked. E.g. 0.10 means you expect to make $0.10 profit for every $1 bet over time.")
+            c5.metric("Model %", f"{vb['model_prob']:.1%}", help="The Elo model's estimated chance this pick wins the match.")
 
             det1, det2, det3 = st.columns(3)
             det1.caption(f"Implied: {vb['implied_prob']:.1%}")
