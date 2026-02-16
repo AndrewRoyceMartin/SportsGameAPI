@@ -6,7 +6,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 from stats_provider import get_upcoming_games, get_results_history, Game, clear_events_cache
 from features import build_elo_ratings, elo_win_prob
-from odds_fetch import fetch_odds_for_window
+from odds_fetch import fetch_odds_for_window, get_odds_provider_name, probe_odds_provider
 from odds_extract import extract_moneylines, consensus_decimal
 from mapper import match_games_to_odds, _parse_iso
 from value_engine import implied_probability, edge, expected_value
@@ -42,6 +42,8 @@ def preflight_availability(
         fixtures_count = 0
         stats_error = True
 
+    odds_provider = get_odds_provider_name(league_key)
+
     if stats_error:
         status = "error"
     elif fixtures_count > 0:
@@ -56,7 +58,63 @@ def preflight_availability(
         "lookahead_days": lookahead,
         "window": (str(today), str(date_to)),
         "status": status,
+        "odds_provider": odds_provider,
+        "odds_status": "not_probed",
+        "odds_items": None,
+        "odds_error": None,
     }
+
+
+def _cached_odds_probe(league_key: str, harvest_key: str, lookahead_days: int) -> Dict[str, Any]:
+    return probe_odds_provider(
+        league_key,
+        harvest_league_key=harvest_key,
+        lookahead_days=lookahead_days,
+        timeout=60,
+    )
+
+
+def preflight_with_odds_probe(
+    league_key: str,
+    *,
+    lookahead_override: int | None = None,
+) -> Dict[str, Any]:
+    result = preflight_availability(league_key, lookahead_override=lookahead_override)
+
+    if result["status"] == "no_fixtures":
+        result["odds_status"] = "skipped"
+        return result
+
+    harvest_key = LEAGUE_MAP.get(league_key, league_key)
+
+    cache_key = f"odds_probe_{league_key}"
+    import streamlit as st
+    import time as _t
+    cached = st.session_state.get(cache_key)
+    ttl = 300
+    if cached and (_t.time() - cached.get("_ts", 0)) < ttl:
+        probe = cached
+    else:
+        probe = _cached_odds_probe(league_key, harvest_key, result["lookahead_days"])
+        probe["_ts"] = _t.time()
+        st.session_state[cache_key] = probe
+
+    result["odds_provider"] = probe["provider"]
+    result["odds_items"] = probe["items"]
+    result["odds_error"] = probe.get("error", "")
+
+    if probe["error"]:
+        result["odds_status"] = "error"
+        if result["status"] == "ready":
+            result["status"] = "odds_error"
+    elif probe["ok"]:
+        result["odds_status"] = "ok"
+    else:
+        result["odds_status"] = "empty"
+        if result["status"] == "ready":
+            result["status"] = "odds_empty"
+
+    return result
 
 
 def preflight_scan(

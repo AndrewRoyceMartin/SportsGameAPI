@@ -33,6 +33,7 @@ from pipeline import (
     tune_elo_params,
     preflight_availability,
     preflight_scan,
+    preflight_with_odds_probe,
 )
 from ui_helpers import (
     show_diagnostics,
@@ -322,9 +323,9 @@ def main():
                     results = preflight_scan(all_real_leagues, lookahead_days=scan_window)
                 st.session_state[avail_key] = results
             else:
-                with st.spinner(f"Checking {league_label}..."):
+                with st.spinner(f"Checking {league_label} (fixtures + odds probe)..."):
                     clear_events_cache()
-                    result = preflight_availability(league_label, lookahead_override=scan_window)
+                    result = preflight_with_odds_probe(league_label, lookahead_override=scan_window)
                 st.session_state[avail_key] = [result]
 
         if scan_all_btn:
@@ -844,6 +845,28 @@ def _render_picks(
                     f"These will be used for your next scan."
                 )
                 st.rerun()
+
+    if _do_find:
+        preflight_info = st.session_state.get("preflight_info", {})
+        pf = preflight_info.get(league_label, {})
+        pf_status = pf.get("status", "")
+        if pf_status == "no_fixtures":
+            st.warning(
+                f"**{league_label}** has no fixtures in the current lookahead window. "
+                f"Try extending the lookahead or switching to a league with upcoming games."
+            )
+            _do_find = False
+        elif pf_status == "odds_empty":
+            st.warning(
+                f"**{league_label}** has fixtures but the odds provider returned no data. "
+                f"The scraper may be temporarily empty — try again later or switch leagues."
+            )
+        elif pf_status == "odds_error":
+            odds_err = pf.get("odds_error", "")
+            st.warning(
+                f"**{league_label}** odds probe had an error: {odds_err[:80]}. "
+                f"You can still try running, but odds may not be available."
+            )
 
     if _do_find:
         st.session_state.setdefault("league_config", {})[league_label] = {

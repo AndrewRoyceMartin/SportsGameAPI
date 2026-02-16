@@ -1,0 +1,165 @@
+Thought for 15s
+
+Yep — your replit.md shows you’re already conceptually at Step 4A: Preflight availability check (fixture count → Ready / No fixtures / Error). What’s missing (based on your screenshots + recent “odds empty” issues) is making that check visible, fast, and actionable before you run the full pipeline.
+
+Below is a clean Step 4A implementation for Replit that won’t overload the app.
+
+Step 4A goal
+
+Before you press Find Value Bets, the app should answer:
+
+Does this league have upcoming fixtures in the current lookahead window?
+
+Does the odds provider for this league appear to be returning anything right now?
+
+If not, tell you what to do next (extend lookahead / switch league / provider issue).
+
+What to build (minimal UI)
+Add a “Availability Check” panel (sidebar or top of Place Bets)
+
+Runs quickly
+
+Returns a small table:
+
+League
+
+Fixtures found (SofaScore)
+
+Odds provider (Harvest/Sportsbet)
+
+Odds status (OK / Empty / Error)
+
+Suggested action
+
+Important: make it cheap
+
+Fixture check is cheap.
+
+Odds check must be lightweight:
+
+Either read last successful run items (if you store any cache),
+
+OR do a single actor call per league with tight limits.
+
+Cache results for 2–5 minutes.
+
+Files to change
+
+app.py (UI + button + table)
+
+odds_fetch.py (add a lightweight “probe” function)
+
+(optional) pipeline.py (if you want a shared helper)
+
+1) Add a cached fixture count helper
+
+In app.py (or stats_provider.py if you prefer), add:
+
+import streamlit as st
+from datetime import date, timedelta
+
+@st.cache_data(ttl=180)  # 3 minutes
+def _fixture_count(league: str, lookahead_days: int) -> tuple[int, str]:
+    """Returns (count, error_msg). error_msg=='' if ok."""
+    try:
+        games = get_upcoming_games(
+            league,
+            date_from=date.today(),
+            date_to=date.today() + timedelta(days=lookahead_days),
+        )
+        return len(games), ""
+    except Exception as e:
+        return 0, str(e)
+
+2) Add a lightweight odds probe
+
+In odds_fetch.py, add a function that does not run the whole pipeline — just checks whether the provider is returning items.
+
+Example pattern (adjust to your existing apify_client.py / runner):
+
+def probe_odds_provider(league: str, lookahead_days: int = 7) -> dict:
+    """
+    Returns: {provider: str, ok: bool, items: int, error: str}
+    This must be fast and safe.
+    """
+    provider = get_odds_provider_for_league(league)  # you already effectively have this routing
+    try:
+        if provider == "sportsbet":
+            # Prefer a single, tight call (or a cheap endpoint if you have one)
+            items = fetch_sportsbet_items_for_league(league, limit=20)  # implement limit in runner
+            return {"provider": "Sportsbet (AU)", "ok": len(items) > 0, "items": len(items), "error": ""}
+        else:
+            items = fetch_harvest_items_for_league(league, lookahead_days=lookahead_days, limit=20)
+            return {"provider": "Harvest", "ok": len(items) > 0, "items": len(items), "error": ""}
+    except Exception as e:
+        return {"provider": provider, "ok": False, "items": 0, "error": str(e)}
+
+
+Critical: make sure your Harvest fetch supports a limit so you aren’t pulling thousands of rows just to check “is it empty”.
+
+If you don’t have per-league limit support yet, easiest option is:
+
+Run actor sync with a small maxItems / limit input if the actor supports it, OR
+
+Fetch dataset items with limit=20 (Apify dataset endpoint supports limit).
+
+3) Render the Availability Check table
+
+In app.py, near the Place Bets controls (or sidebar), add:
+
+import pandas as pd
+
+def render_availability_check(leagues: list[str], lookahead_days: int):
+    rows = []
+    for lg in leagues:
+        fx_count, fx_err = _fixture_count(lg, lookahead_days)
+        odds = probe_odds_provider(lg, lookahead_days=lookahead_days)
+
+        if fx_err:
+            status = "ERROR"
+            suggestion = "Open Fix Issues → stats error"
+        elif fx_count == 0:
+            status = "NO FIXTURES"
+            suggestion = "Extend lookahead or choose another league"
+        elif odds["error"]:
+            status = "ODDS ERROR"
+            suggestion = "Open Fix Issues → odds error"
+        elif odds["items"] == 0:
+            status = "ODDS EMPTY"
+            suggestion = "Try another league/provider (external scraper empty)"
+        else:
+            status = "READY"
+            suggestion = "Run Find Value Bets"
+
+        rows.append({
+            "League": lg,
+            "Fixtures": fx_count,
+            "Odds Provider": odds["provider"],
+            "Odds Items": odds["items"],
+            "Status": status,
+            "Suggested Next Step": suggestion,
+        })
+
+    df = pd.DataFrame(rows)
+    st.dataframe(df, use_container_width=True, hide_index=True)
+
+
+Add a button to run it:
+
+if st.button("Check Availability", use_container_width=True):
+    render_availability_check(visible_leagues, lookahead_days)
+
+
+Where visible_leagues is whatever the user has filtered to via your sport dropdown + search.
+
+4) Make “Find Value Bets” smart
+
+If availability says NO FIXTURES or ODDS EMPTY, don’t let the app waste time.
+
+Right before running _run_pipeline(...):
+
+If fixture count == 0 → show message and return
+
+If odds probe returns 0 items → show message and return (or warn + allow “force run”)
+
+This alone will make the GUI feel much more reliable.

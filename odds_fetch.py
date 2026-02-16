@@ -138,3 +138,52 @@ def get_raw_count() -> int:
 
 def get_provider_detail() -> Optional[str]:
     return _last_provider_detail
+
+
+def get_odds_provider_name(league_label: str) -> str:
+    if is_sportsbet_league(league_label):
+        return "Sportsbet (AU)"
+    return "Harvest"
+
+
+def probe_odds_provider(
+    league_label: str,
+    harvest_league_key: str,
+    lookahead_days: int = 7,
+    timeout: int = 60,
+) -> Dict[str, Any]:
+    import os
+    has_token = bool(os.getenv("APIFY_TOKEN"))
+    provider = get_odds_provider_name(league_label)
+
+    if not has_token:
+        return {
+            "provider": provider,
+            "ok": False,
+            "items": 0,
+            "error": "APIFY_TOKEN not set",
+        }
+
+    try:
+        if is_sportsbet_league(league_label):
+            actor_id = SPORTSBET_ACTOR_ID
+            actor_input = _build_sportsbet_input(league_label)
+        else:
+            actor_id = "harvest~sportsbook-odds-scraper"
+            actor_input = _build_harvest_input(harvest_league_key)
+
+        items = run_actor_get_items(actor_id, actor_input, timeout=timeout)
+        count = len(items) if items else 0
+        return {
+            "provider": provider,
+            "ok": count > 0,
+            "items": count,
+            "error": "",
+        }
+    except Exception as exc:
+        return {
+            "provider": provider,
+            "ok": False,
+            "items": 0,
+            "error": str(exc)[:120],
+        }

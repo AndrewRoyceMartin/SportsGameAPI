@@ -101,9 +101,11 @@ def render_funnel_stepper(
 
 
 _STATUS_LABELS = {
-    "ready": ("Ready", "green", "Fixtures found in the lookahead window — pipeline can run."),
+    "ready": ("Ready", "green", "Fixtures + odds look good — pipeline can run."),
     "no_fixtures": ("No fixtures", "red", "No upcoming games found. Try a longer lookahead window or check back later."),
     "error": ("Error", "orange", "Something went wrong checking this league."),
+    "odds_error": ("Odds Error", "orange", "Fixtures found but odds provider returned an error."),
+    "odds_empty": ("Odds Empty", "red", "Fixtures found but odds provider returned no data."),
 }
 
 
@@ -115,12 +117,12 @@ def render_availability_table(rows: List[Dict[str, Any]]) -> None:
     sorted_rows = sorted(rows, key=lambda r: (-r["fixtures_count"], r["league"]))
 
     ready = [r for r in sorted_rows if r["status"] == "ready"]
-    empty = [r for r in sorted_rows if r["status"] != "ready"]
+    issues = [r for r in sorted_rows if r["status"] != "ready"]
 
     if ready:
         st.markdown(f"**{len(ready)}** league(s) ready to run")
-    if empty:
-        st.markdown(f"**{len(empty)}** league(s) with no fixtures in window")
+    if issues:
+        st.markdown(f"**{len(issues)}** league(s) with issues")
 
     for r in sorted_rows:
         label, color, _tip = _STATUS_LABELS.get(r["status"], ("Unknown", "gray", ""))
@@ -128,15 +130,28 @@ def render_availability_table(rows: List[Dict[str, Any]]) -> None:
         fixtures_txt = f"{r['fixtures_count']} fixture(s)" if r["fixtures_count"] else "0 fixtures"
         window_txt = f"{r['lookahead_days']}d window"
 
+        provider = r.get("odds_provider", "")
+        odds_items = r.get("odds_items")
+        odds_status = r.get("odds_status")
+
+        parts = [fixtures_txt, window_txt]
+
         earliest = r.get("earliest_utc")
         if earliest:
             try:
                 earliest_str = earliest.strftime("%a %d %b %H:%M UTC")
             except Exception:
                 earliest_str = str(earliest)[:16]
-            detail = f"{fixtures_txt} · {window_txt} · Next: {earliest_str}"
-        else:
-            detail = f"{fixtures_txt} · {window_txt}"
+            parts.append(f"Next: {earliest_str}")
+
+        if provider:
+            parts.append(f"via {provider}")
+        if odds_status == "not_probed":
+            parts.append("odds not checked")
+        elif odds_items is not None:
+            parts.append(f"{odds_items} odds event(s)")
+
+        detail = " · ".join(parts)
 
         col1, col2, col3 = st.columns([3, 5, 3])
         with col1:
@@ -148,9 +163,9 @@ def render_availability_table(rows: List[Dict[str, Any]]) -> None:
 
 
 def _render_availability_action(r: Dict[str, Any], ready_rows: List[Dict[str, Any]]) -> None:
-    league = r["league"]
     status = r["status"]
     lookahead = r["lookahead_days"]
+    odds_error = r.get("odds_error", "")
 
     if status == "ready":
         st.caption(":green[Ready to scan]")
@@ -164,6 +179,11 @@ def _render_availability_action(r: Dict[str, Any], ready_rows: List[Dict[str, An
                 st.caption(f"Try: {', '.join(ready_names[:3])}")
             else:
                 st.caption("Check back later")
+    elif status == "odds_empty":
+        st.caption("Odds provider returned nothing — try later or switch league")
+    elif status == "odds_error":
+        short = odds_error[:60] if odds_error else "Unknown error"
+        st.caption(f"Odds error: {short}")
     elif status == "error":
         st.caption("Retry later")
 
