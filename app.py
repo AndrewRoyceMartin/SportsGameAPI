@@ -506,11 +506,34 @@ def main():
             st.info("Run the pipeline from the Place Bets tab to see detailed results here.")
 
     with tab_backtest:
-        st.subheader("Model Backtest")
-        st.caption(
-            "Test the Elo model against past results. Trains on older games, "
-            "then predicts recent games to measure accuracy."
-        )
+        st.subheader("Trust & Tuning")
+
+        with st.container():
+            st.markdown(
+                "Follow these three steps to build confidence in the model and "
+                "find the best settings for each league."
+            )
+            step_cols = st.columns(3)
+            with step_cols[0]:
+                st.markdown(
+                    "**Step 1 — Baseline Backtest**\n\n"
+                    "Run a backtest with current settings to see how the model "
+                    "performs on past games. This is your starting benchmark."
+                )
+            with step_cols[1]:
+                st.markdown(
+                    "**Step 2 — Tune Parameters**\n\n"
+                    "Use the grid search to try different Elo settings. It finds "
+                    "the combination that scores best on log loss + calibration."
+                )
+            with step_cols[2]:
+                st.markdown(
+                    "**Step 3 — Confirm Improvement**\n\n"
+                    "Re-run the backtest with the new settings to verify the "
+                    "improvement holds and isn't just overfitting."
+                )
+
+        st.divider()
 
         if run_all:
             bt_league = st.selectbox(
@@ -522,12 +545,20 @@ def main():
         else:
             bt_league = league_label
 
+        st.subheader("Backtest")
+        st.caption(
+            "Test the Elo model against past results. Trains on older games, "
+            "then predicts recent games to measure accuracy."
+        )
+
         bt_mode = st.radio(
             "Backtest mode",
             ["Single split", "Walk-forward (multi-fold)"],
             horizontal=True,
             key="bt_mode",
-            help="Single split tests one period. Walk-forward runs multiple overlapping folds for more reliable results.",
+            help="**Single split** tests one time window — quick but can be noisy. "
+                 "**Walk-forward** runs multiple overlapping windows and averages results — "
+                 "slower but much more reliable.",
         )
 
         if bt_mode == "Single split":
@@ -537,14 +568,16 @@ def main():
                     "Training period (days)",
                     30, 365, value=90, step=10,
                     key="bt_history",
-                    help="How many days of older games to use for building Elo ratings.",
+                    help="How many days of older games to use for building Elo ratings. "
+                         "More data gives the model more to learn from, but very old games may be less relevant.",
                 )
             with bt_c2:
                 bt_test = st.slider(
                     "Test period (days)",
                     7, 90, value=30, step=7,
                     key="bt_test",
-                    help="How many days of recent games to test predictions against.",
+                    help="How many days of recent games to test predictions against. "
+                         "The model never sees these results during training.",
                 )
 
             if st.button("Run Backtest", type="primary", use_container_width=True, key="run_bt_single"):
@@ -560,21 +593,22 @@ def main():
                     "Training window (days)",
                     60, 365, value=180, step=30,
                     key="wf_train",
-                    help="How many days of training data per fold.",
+                    help="How many days of training data per fold. Larger windows give more stable Elo ratings.",
                 )
             with wf_c2:
                 wf_test = st.slider(
                     "Test window (days)",
                     14, 90, value=30, step=7,
                     key="wf_test",
-                    help="How many days to test per fold.",
+                    help="How many days to test per fold. Each fold slides forward to test a fresh period.",
                 )
             with wf_c3:
                 wf_folds = st.slider(
                     "Number of folds",
                     2, 8, value=4, step=1,
                     key="wf_folds",
-                    help="More folds = more reliable but needs more data.",
+                    help="More folds = more reliable average, but requires more historical data. "
+                         "4 folds is a good default.",
                 )
 
             total_needed = wf_train + wf_test * wf_folds
@@ -597,7 +631,15 @@ def main():
         st.subheader("Tune Elo Parameters")
         st.caption(
             "Grid search over K-factor and home advantage to find the best parameters "
-            "for this league. Uses log loss as the primary scoring metric."
+            "for this league. Scored by log loss (rewards calibration, punishes overconfidence) "
+            "rather than raw accuracy, which can be misleading for betting."
+        )
+        st.info(
+            "**Why not just optimise for accuracy?** A model that always picks the favourite "
+            "can be 60%+ accurate but useless for betting — the odds already price that in. "
+            "Log loss rewards *well-calibrated* probabilities: if the model says 70%, "
+            "it should win ~70% of the time. That's what makes edge calculations trustworthy.",
+            icon="\u2139\ufe0f",
         )
         if st.button("Run Tuning Grid Search", type="primary", use_container_width=True, key="run_tune"):
             with st.spinner(f"Tuning parameters for {bt_league}... testing K and home advantage combinations"):

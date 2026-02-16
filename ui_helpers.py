@@ -1310,8 +1310,8 @@ def render_tuning_results(tune: Dict[str, Any]) -> None:
 
     st.subheader(f"Elo Parameter Tuning — {tune['league']}")
     st.caption(
-        f"Tested {tune['total_combos']} combinations on {tune['test_games']} games "
-        f"(trained on {tune['train_games']})"
+        f"Tested {tune['total_combos']} combinations on {tune['test_games']} test games "
+        f"(trained on {tune['train_games']} games)"
     )
 
     current = tune.get("current_params", {})
@@ -1320,24 +1320,53 @@ def render_tuning_results(tune: Dict[str, Any]) -> None:
     c1, c2 = st.columns(2)
     with c1:
         st.markdown("**Current Parameters**")
-        st.metric("K-factor", current.get("k", "?"))
-        st.metric("Home Advantage", current.get("home_adv", "?"))
+        st.metric(
+            "K-factor", current.get("k", "?"),
+            help="Controls how quickly Elo ratings change after each game. "
+                 "Higher K = ratings react faster to recent results but are more volatile.",
+        )
+        st.metric(
+            "Home Advantage", current.get("home_adv", "?"),
+            help="Elo points added to the home team's rating before predicting. "
+                 "Higher values mean the model expects home teams to win more often.",
+        )
     with c2:
         st.markdown("**Best Parameters (by log loss)**")
-        st.metric("K-factor", best.get("k", "?"))
-        st.metric("Home Advantage", best.get("home_adv", "?"))
-        st.metric("Log Loss", f"{tune['best_log_loss']:.4f}")
-        st.metric("Accuracy", f"{tune['best_accuracy']:.1%}")
+        st.metric(
+            "K-factor", best.get("k", "?"),
+            help="The K-factor that produced the best log loss score during grid search.",
+        )
+        st.metric(
+            "Home Advantage", best.get("home_adv", "?"),
+            help="The home advantage value that produced the best log loss score during grid search.",
+        )
+        st.metric(
+            "Log Loss", f"{tune['best_log_loss']:.4f}",
+            help="Lower is better. Measures how well-calibrated the probabilities are — "
+                 "a confident wrong prediction is penalised heavily. 0.693 = coin flip.",
+        )
+        st.metric(
+            "Accuracy", f"{tune['best_accuracy']:.1%}",
+            help="Percentage of correct picks with the best parameters. "
+                 "Shown for reference, but log loss is the primary optimisation target.",
+        )
 
     changed = (best.get("k") != current.get("k") or best.get("home_adv") != current.get("home_adv"))
     if changed:
         st.info(
             f"Tuning suggests K={best['k']}, Home Adv={best['home_adv']} "
             f"(currently K={current['k']}, Home Adv={current['home_adv']}). "
-            f"Update ELO_PARAMS in league_defaults.py to apply."
+            f"Update ELO_PARAMS in league_defaults.py to apply, then re-run the backtest "
+            f"(Step 3) to confirm the improvement holds on fresh data."
         )
     else:
         st.success("Current parameters are already optimal for this data window.")
+
+    st.warning(
+        "**Watch for overfitting.** These results are from the same data window used to find the parameters. "
+        "Always re-run the backtest (Step 3) on a different time period to confirm the improvement generalises.",
+        icon="\u26a0\ufe0f",
+    )
 
     grid = tune.get("grid_results", [])
     if grid:
@@ -1516,7 +1545,17 @@ def render_walkforward_results(wf: Dict[str, Any]) -> None:
             })
     if conf_rows:
         st.markdown("**High-confidence accuracy by threshold**")
+        st.caption(
+            "Accuracy when the model is more confident. Higher thresholds should be more accurate — "
+            "if not, the model may be poorly calibrated for this league."
+        )
         st.dataframe(pd.DataFrame(conf_rows), use_container_width=True, hide_index=True)
+        st.info(
+            "**High confidence does not always mean high value.** "
+            "Very confident picks are often heavy favourites with short odds. "
+            "The edge (value) can be smaller than a well-calibrated 60% pick at longer odds.",
+            icon="\U0001f4a1",
+        )
 
     st.divider()
     st.markdown("**Per-fold details**")
@@ -1632,7 +1671,21 @@ def render_backtest_results(bt: Dict[str, Any]) -> None:
 
     if bucket_rows:
         st.markdown("**Accuracy by confidence level**")
+        st.caption(
+            "Higher confidence should generally show higher accuracy. "
+            "Use this to decide your minimum confidence filter on the Place Bets tab."
+        )
         st.dataframe(pd.DataFrame(bucket_rows), use_container_width=True, hide_index=True)
+        high_buckets = [r for r in bucket_rows if r["Confidence"] in ("70-80%", "80%+")]
+        if high_buckets:
+            st.info(
+                "**High confidence does not always mean high value.** "
+                "80%+ confidence picks often correspond to heavy favourites where "
+                "the sportsbook odds are very short. The model is right more often, "
+                "but the payout is low — so the edge (value) can actually be smaller "
+                "than a well-calibrated 60% pick at longer odds.",
+                icon="\U0001f4a1",
+            )
 
     render_backtest_diagnostics(bt.get("diagnostics", {}))
 
