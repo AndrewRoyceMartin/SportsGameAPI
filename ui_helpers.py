@@ -15,7 +15,7 @@ from features import elo_win_prob
 from league_map import is_two_outcome
 from mapper import _name_score, _parse_iso
 
-AU_LEAGUES = {"AFL", "NRL", "NBL"}
+AU_LEAGUES = {"AFL", "NRL", "NBL", "A-League Men", "Super Rugby Pacific"}
 AU_PRESEASON_MONTHS = {1, 2, 3}
 
 
@@ -99,8 +99,12 @@ def render_funnel_stepper(
         st.caption(pills)
 
 
+_AU_PRESEASON_LEAGUES = {"AFL", "NRL", "NBL"}
+
 def render_au_season_banner(league_label: str) -> None:
     if league_label not in AU_LEAGUES:
+        return
+    if league_label not in _AU_PRESEASON_LEAGUES:
         return
     now_month = datetime.now(timezone.utc).month
     if now_month in AU_PRESEASON_MONTHS:

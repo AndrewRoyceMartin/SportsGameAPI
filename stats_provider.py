@@ -51,6 +51,8 @@ _LEAGUE_ROUTING = {
     "AFL": _LeagueRoute(sport="aussie-rules", accept=["afl"], skip_tournament_deny=True),
     "NRL": _LeagueRoute(sport="rugby", accept=["nrl"], skip_tournament_deny=True),
     "NBL": _LeagueRoute(sport="basketball", accept=["nbl"]),
+    "A-League Men": _LeagueRoute(sport="football", accept=["a-league", "a league", "aleague"]),
+    "Super Rugby Pacific": _LeagueRoute(sport="rugby", accept=["super rugby", "super rugby pacific"]),
 }
 
 
@@ -69,6 +71,12 @@ def _matches_league(game_league_str: str, accept: list, league_key: str = "") ->
 
     if league_key == "NBL":
         return "(australia)" in gl and "nbl" in gl and "women" not in gl and "wnbl" not in gl
+
+    if league_key == "A-League Men":
+        return ("a-league" in gl or "a league" in gl or "aleague" in gl) and "women" not in gl and "w-league" not in gl
+
+    if league_key == "Super Rugby Pacific":
+        return "super rugby" in gl and "women" not in gl
 
     return any(pat in gl for pat in accept)
 

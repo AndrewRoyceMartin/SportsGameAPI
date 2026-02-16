@@ -8,6 +8,8 @@ LEAGUE_MAP = {
     "AFL": "AFL",
     "NRL": "NRL",
     "NBL": "NBL",
+    "A-League Men": "A-League-Men",
+    "Super Rugby Pacific": "Super-Rugby-Pacific",
     "UFC": "UFC",
 }
 
@@ -18,6 +20,8 @@ TWO_OUTCOME_LEAGUES = [
     "AFL",
     "NRL",
     "NBL",
+    "A-League Men",
+    "Super Rugby Pacific",
     "College Football",
     "College Basketball",
 ]
@@ -38,6 +42,8 @@ LEAGUE_SPORT = {
     "NHL": "Hockey",
     "AFL": "Aussie Rules",
     "NRL": "Rugby League",
+    "A-League Men": "Soccer",
+    "Super Rugby Pacific": "Rugby Union",
     "Champions League": "Soccer",
     "UFC": "MMA",
 }

@@ -25,6 +25,14 @@ SPORTSBET_LEAGUES: Dict[str, Dict[str, str]] = {
         "url": "https://www.sportsbet.com.au/betting/basketball-aus-other/australian-nbl",
         "competition": "NBL",
     },
+    "A-League Men": {
+        "url": "https://www.sportsbet.com.au/betting/soccer/australia/australian-a-league-men",
+        "competition": "A-League Men",
+    },
+    "Super Rugby Pacific": {
+        "url": "https://www.sportsbet.com.au/betting/rugby-union/super-rugby-pacific",
+        "competition": "Super Rugby Pacific",
+    },
 }
 
 

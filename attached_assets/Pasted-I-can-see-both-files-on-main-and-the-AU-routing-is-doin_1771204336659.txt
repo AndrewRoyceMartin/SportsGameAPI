@@ -1,0 +1,74 @@
+I can see both files on main, and the AU routing is doing what you intended.
+
+What I see in league_map.py
+
+AU leagues are first-class options: AFL, NRL, NBL.
+
+They’re marked as two-outcome leagues (so your “2-outcome only” logic applies).
+
+Sports grouping is set (AFL → “Aussie Rules”, NRL → “Rugby League”, NBL → “Basketball”).
+
+Practical implication: the UI should be able to show these under the right sport headings, and any “experimental league” warnings won’t apply to AFL/NRL/NBL.
+
+What I see in the AU section of stats_provider.py
+1) AFL + NRL can include preseason/all-star tournaments
+
+You’ve set:
+
+skip_tournament_deny=True for AFL and NRL routes.
+That means _TOURNAMENT_DENY (which includes “preseason”, “all-star”, etc.) won’t filter them out for those leagues.
+
+Why that matters: it fixes the “0 fixtures” problem during preseason.
+
+2) NBL is now “Australia-only” and excludes women’s comps
+
+In _matches_league() you’ve added a special case for "NBL":
+
+requires "(australia)" and "nbl"
+
+excludes "women" and "wnbl"
+
+Why that matters: it stops Czech/Ugandan/etc “NBL” collisions.
+
+3) Why AFL still shows 0 in a 7-day upcoming fetch
+
+Your default upcoming window is 7 days (date_to = today + 7).
+So AFL will show 0 if the next match is >7 days out (which matches what you saw until you tested a 21-day window).
+
+Bottom line: nothing is “broken” there — AFL just needs a longer lookahead (like your 21-day test).
+
+If you want to add more Australian sports (the right way)
+
+You do not need separate odds code “per sport” if Sportsbet/APIFY can scrape that sport — you mainly need:
+
+a league entry in league_map.py (UI + categorisation)
+
+a SofaScore route in stats_provider.py (fixtures/results)
+
+a Sportsbet URL / league support in your Sportsbet odds path (you already have AFL/NRL/NBL working)
+
+Good AU leagues to add next (team sports, 2-outcome)
+
+A-League Men / A-League Women (soccer)
+
+Super Rugby Pacific (rugby union, usually no draws in many matches but check competition rules/market)
+
+BBL (Big Bash League) (cricket is trickier because results/abandoned/no result logic)
+
+State leagues / NPL (soccer) if SofaScore coverage is consistent
+
+Minimal code pattern (what you’ll do)
+
+league_map.py
+
+Add the league label to TWO_OUTCOME_LEAGUES
+
+Add sport category in LEAGUE_SPORT
+
+Add mapping in LEAGUE_MAP if you need substring → internal key
+
+stats_provider.py
+
+Add _LEAGUE_ROUTING["A-League Men"] = _LeagueRoute(sport="football", accept=["a-league", "a league", "aleague"])
+
+If it’s preseason-heavy, optionally set skip_tournament_deny=True for that league only.
