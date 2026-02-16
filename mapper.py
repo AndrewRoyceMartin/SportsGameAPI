@@ -17,6 +17,12 @@ _AU_NAME_ONLY_THRESHOLD = 70
 
 _AU_LEAGUES = {"AFL", "NRL", "NBL", "A-League Men", "Super Rugby Pacific"}
 
+_TEAM_SPORT_LEAGUES = {
+    "AFL", "NRL", "NBL", "NBA", "NHL", "NFL",
+    "A-League Men", "Super Rugby Pacific",
+    "College Football", "College Basketball",
+}
+
 _ALIASES = {
     "psg": "paris saint germain",
     "man city": "manchester city",
@@ -197,6 +203,8 @@ def match_games_to_odds(
             og_dt = _parse_iso(og_time_str)
 
             both_have_time = fx_dt is not None and og_dt is not None
+            if not both_have_time and league in _TEAM_SPORT_LEAGUES:
+                continue
             if both_have_time:
                 diff = abs((fx_dt - og_dt).total_seconds())
                 if diff > tw * 3600:
