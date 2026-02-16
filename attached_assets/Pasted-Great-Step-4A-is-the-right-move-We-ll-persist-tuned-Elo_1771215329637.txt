@@ -1,0 +1,222 @@
+Great — Step 4A is the right move. We’ll persist tuned Elo params per league into SQLite so they survive refresh/redeploy, then auto-load them into st.session_state["elo_overrides"].
+
+Below are Replit-ready, copy/paste edits.
+
+Step 4A — Persist Elo overrides to SQLite
+1) Update store.py (create table + save/load helpers)
+A) Add/extend your DB init to create the table
+
+Find your DB initialisation function in store.py (often called init_db() or similar). Add this table creation:
+
+# store.py
+
+def init_db() -> None:
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+
+        # ... your existing CREATE TABLE statements ...
+
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS elo_overrides (
+                league TEXT PRIMARY KEY,
+                k REAL,
+                home_adv REAL,
+                scale REAL,
+                recency_half_life REAL,
+                updated_at TEXT
+            )
+            """
+        )
+
+        conn.commit()
+    finally:
+        conn.close()
+
+
+If you don’t have an init_db() function, tell me what store.py uses for setup (but don’t stop—add the CREATE TABLE into wherever you already create the other tables).
+
+B) Add 3 new functions to store.py
+
+Put these near your other persistence helpers (save picks, load picks, stats, etc.):
+
+# store.py
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Any, Dict, Optional
+
+
+def save_elo_override(league: str, params: Dict[str, Any]) -> None:
+    """Upsert tuned Elo params for a league."""
+    if not league:
+        return
+
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+    k = params.get("k")
+    home_adv = params.get("home_adv")
+    scale = params.get("scale")
+    recency_half_life = params.get("recency_half_life")
+
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO elo_overrides (league, k, home_adv, scale, recency_half_life, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(league) DO UPDATE SET
+                k=excluded.k,
+                home_adv=excluded.home_adv,
+                scale=excluded.scale,
+                recency_half_life=excluded.recency_half_life,
+                updated_at=excluded.updated_at
+            """,
+            (league, k, home_adv, scale, recency_half_life, now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def load_elo_override(league: str) -> Optional[Dict[str, Any]]:
+    """Load tuned Elo params for a league, or None if not saved."""
+    if not league:
+        return None
+
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT k, home_adv, scale, recency_half_life, updated_at
+            FROM elo_overrides
+            WHERE league = ?
+            """,
+            (league,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return None
+
+        k, home_adv, scale, recency_half_life, updated_at = row
+        out: Dict[str, Any] = {}
+        if k is not None:
+            out["k"] = float(k)
+        if home_adv is not None:
+            out["home_adv"] = float(home_adv)
+        if scale is not None:
+            out["scale"] = float(scale)
+        if recency_half_life is not None:
+            out["recency_half_life"] = float(recency_half_life)
+
+        # handy metadata for UI if you want it later
+        out["_updated_at"] = updated_at
+        return out
+    finally:
+        conn.close()
+
+
+def load_all_elo_overrides() -> Dict[str, Dict[str, Any]]:
+    """Load all saved league overrides into {league: params}."""
+    conn = _connect()
+    try:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            SELECT league, k, home_adv, scale, recency_half_life, updated_at
+            FROM elo_overrides
+            """
+        )
+        rows = cur.fetchall()
+
+        result: Dict[str, Dict[str, Any]] = {}
+        for league, k, home_adv, scale, recency_half_life, updated_at in rows:
+            params: Dict[str, Any] = {}
+            if k is not None:
+                params["k"] = float(k)
+            if home_adv is not None:
+                params["home_adv"] = float(home_adv)
+            if scale is not None:
+                params["scale"] = float(scale)
+            if recency_half_life is not None:
+                params["recency_half_life"] = float(recency_half_life)
+            params["_updated_at"] = updated_at
+            result[str(league)] = params
+        return result
+    finally:
+        conn.close()
+
+C) Make sure init_db() is actually called
+
+Some projects call it in app.py early, others in store.py on import. Ensure this happens once at app startup.
+
+If you already have something like:
+
+from store import init_db
+init_db()
+
+
+leave it.
+
+If you don’t, add in app.py near the top (after imports):
+
+from store import init_db
+init_db()
+
+2) Update app.py (save after tuning + auto-load on league selection)
+A) Import the new functions
+
+At the top of app.py with the other store imports:
+
+from store import save_elo_override, load_elo_override  # (or load_all_elo_overrides if you prefer)
+
+B) Save overrides right where you already set session state
+
+You already have lines like:
+
+st.session_state.setdefault("elo_overrides", {})[bt_league] = {...}
+
+st.session_state["elo_overrides"][league_label] = {...}
+
+Immediately after those, add:
+
+save_elo_override(bt_league, st.session_state["elo_overrides"][bt_league])
+
+
+and/or:
+
+save_elo_override(league_label, st.session_state["elo_overrides"][league_label])
+
+
+Concrete example (based on your grep showing app.py:708 and app.py:817):
+
+# after you set overrides for bt_league
+st.session_state.setdefault("elo_overrides", {})[bt_league] = {
+    "k": best_k,
+    "home_adv": best_home_adv,
+    "scale": 400,
+    "recency_half_life": half_life,
+}
+save_elo_override(bt_league, st.session_state["elo_overrides"][bt_league])
+
+C) Auto-load from SQLite when a league is selected
+
+Right after you determine league_label (or whatever you call the active league), do:
+
+st.session_state.setdefault("elo_overrides", {})
+
+stored = load_elo_override(league_label)
+if stored and league_label not in st.session_state["elo_overrides"]:
+    # drop metadata key if present
+    stored.pop("_updated_at", None)
+    st.session_state["elo_overrides"][league_label] = stored
+
+
+This ensures:
+
+If the session is fresh, saved params are pulled in automatically.
+
+If the user already tuned in the current session, we don’t overwrite.

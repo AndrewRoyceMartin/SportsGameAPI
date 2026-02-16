@@ -3,7 +3,8 @@ from __future__ import annotations
 import sqlite3
 import json
 import os
-from typing import Any, Dict, List
+from datetime import datetime, timezone
+from typing import Any, Dict, List, Optional
 
 DB_PATH = os.getenv("PICKS_DB_PATH", "picks.db")
 
@@ -44,6 +45,15 @@ def init_db() -> None:
 
         CREATE INDEX IF NOT EXISTS idx_picks_date ON picks(match_date);
         CREATE INDEX IF NOT EXISTS idx_picks_selection ON picks(selection);
+
+        CREATE TABLE IF NOT EXISTS elo_overrides (
+            league TEXT PRIMARY KEY,
+            k REAL,
+            home_adv REAL,
+            scale REAL,
+            recency_half_life REAL,
+            updated_at TEXT
+        );
     """)
     _migrate(conn)
     conn.close()
@@ -222,3 +232,79 @@ def get_rolling_stats() -> Dict[str, Any]:
         "quality_tiers": quality_tiers,
         "conf_buckets": conf_buckets,
     }
+
+
+def save_elo_override(league: str, params: Dict[str, Any]) -> None:
+    if not league:
+        return
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    conn = _connect()
+    try:
+        conn.execute(
+            """
+            INSERT INTO elo_overrides (league, k, home_adv, scale, recency_half_life, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(league) DO UPDATE SET
+                k=excluded.k,
+                home_adv=excluded.home_adv,
+                scale=excluded.scale,
+                recency_half_life=excluded.recency_half_life,
+                updated_at=excluded.updated_at
+            """,
+            (league, params.get("k"), params.get("home_adv"),
+             params.get("scale"), params.get("recency_half_life"), now),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def load_elo_override(league: str) -> Optional[Dict[str, Any]]:
+    if not league:
+        return None
+    conn = _connect()
+    try:
+        row = conn.execute(
+            "SELECT k, home_adv, scale, recency_half_life, updated_at FROM elo_overrides WHERE league = ?",
+            (league,),
+        ).fetchone()
+        if not row:
+            return None
+        k, home_adv, scale, recency_half_life, updated_at = row["k"], row["home_adv"], row["scale"], row["recency_half_life"], row["updated_at"]
+        out: Dict[str, Any] = {}
+        if k is not None:
+            out["k"] = float(k)
+        if home_adv is not None:
+            out["home_adv"] = float(home_adv)
+        if scale is not None:
+            out["scale"] = float(scale)
+        if recency_half_life is not None:
+            out["recency_half_life"] = float(recency_half_life)
+        out["_updated_at"] = updated_at
+        return out
+    finally:
+        conn.close()
+
+
+def load_all_elo_overrides() -> Dict[str, Dict[str, Any]]:
+    conn = _connect()
+    try:
+        rows = conn.execute(
+            "SELECT league, k, home_adv, scale, recency_half_life, updated_at FROM elo_overrides"
+        ).fetchall()
+        result: Dict[str, Dict[str, Any]] = {}
+        for row in rows:
+            params: Dict[str, Any] = {}
+            if row["k"] is not None:
+                params["k"] = float(row["k"])
+            if row["home_adv"] is not None:
+                params["home_adv"] = float(row["home_adv"])
+            if row["scale"] is not None:
+                params["scale"] = float(row["scale"])
+            if row["recency_half_life"] is not None:
+                params["recency_half_life"] = float(row["recency_half_life"])
+            params["_updated_at"] = row["updated_at"]
+            result[str(row["league"])] = params
+        return result
+    finally:
+        conn.close()

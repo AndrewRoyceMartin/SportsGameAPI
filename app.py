@@ -3,6 +3,7 @@ from __future__ import annotations
 import streamlit as st
 from datetime import date, timedelta
 
+from store import init_db, save_elo_override, load_elo_override, load_all_elo_overrides
 from config_env import get_env_report
 from league_map import (
     sofascore_to_harvest,
@@ -199,6 +200,7 @@ def main():
     st.set_page_config(page_title="Sports Predictor", page_icon="\u26bd", layout="wide")
     st.markdown(_CUSTOM_CSS, unsafe_allow_html=True)
     inject_action_styles()
+    init_db()
 
     st.title("\u26bd Sports Predictor")
     st.caption(
@@ -275,6 +277,19 @@ def main():
             st.stop()
 
         run_all = league_label == "All"
+
+        st.session_state.setdefault("elo_overrides", {})
+        if not run_all and league_label not in st.session_state["elo_overrides"]:
+            _stored = load_elo_override(league_label)
+            if _stored:
+                _stored.pop("_updated_at", None)
+                st.session_state["elo_overrides"][league_label] = _stored
+        if run_all:
+            _all_stored = load_all_elo_overrides()
+            for _lg, _params in _all_stored.items():
+                if _lg not in st.session_state["elo_overrides"]:
+                    _params.pop("_updated_at", None)
+                    st.session_state["elo_overrides"][_lg] = _params
 
         avail_key = "preflight_results"
         scan_window = st.selectbox(
@@ -711,6 +726,7 @@ def main():
                             "scale": base_ep["scale"],
                             "recency_half_life": base_ep["recency_half_life"],
                         }
+                        save_elo_override(bt_league, st.session_state["elo_overrides"][bt_league])
                         st.success(
                             f"Applied! K={best['k']}, Home Adv={best['home_adv']} will be used "
                             f"for {bt_league} predictions. Re-run the backtest to confirm improvement."
@@ -820,6 +836,7 @@ def _render_picks(
                     "scale": base_ep["scale"],
                     "recency_half_life": base_ep["recency_half_life"],
                 }
+                save_elo_override(league_label, st.session_state["elo_overrides"][league_label])
                 st.success(
                     f"Calibrated! Best params: K={best['k']}, Home Adv={best['home_adv']} "
                     f"(log loss: {tune_result['best_log_loss']:.4f}, "
