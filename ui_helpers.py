@@ -455,28 +455,33 @@ def _diagnose_unmatched(
 ) -> str:
     if not unmatched_fixtures or not unmatched_odds:
         return "coverage_gap"
+
+    smaller, larger = (unmatched_odds, unmatched_fixtures) if len(unmatched_odds) <= len(unmatched_fixtures) else (unmatched_fixtures, unmatched_odds)
+    smaller_sample = smaller[:30]
+    larger_sample = larger[:200]
+
     best_min = 0
     best_time_diff_hours = None
-    for uf in unmatched_fixtures[:10]:
-        uf_h, uf_a = _get_home(uf), _get_away(uf)
-        uf_dt = _parse_iso(uf.get("time", ""))
-        for uo in unmatched_odds[:10]:
-            uo_h, uo_a = _get_home(uo), _get_away(uo)
-            uo_dt = _parse_iso(uo.get("time", ""))
+    for s_item in smaller_sample:
+        s_h, s_a = _get_home(s_item), _get_away(s_item)
+        s_dt = _parse_iso(s_item.get("time", ""))
+        for l_item in larger_sample:
+            l_h, l_a = _get_home(l_item), _get_away(l_item)
+            l_dt = _parse_iso(l_item.get("time", ""))
 
-            h_score = _name_score(uf_h, uo_h)
-            a_score = _name_score(uf_a, uo_a)
+            h_score = _name_score(s_h, l_h)
+            a_score = _name_score(s_a, l_a)
             pair_min = min(h_score, a_score)
 
-            h_flip = _name_score(uf_h, uo_a)
-            a_flip = _name_score(uf_a, uo_h)
+            h_flip = _name_score(s_h, l_a)
+            a_flip = _name_score(s_a, l_h)
             pair_min_flip = min(h_flip, a_flip)
 
             candidate = max(pair_min, pair_min_flip)
             if candidate > best_min:
                 best_min = candidate
-                if uf_dt and uo_dt:
-                    best_time_diff_hours = abs((uf_dt - uo_dt).total_seconds()) / 3600
+                if s_dt and l_dt:
+                    best_time_diff_hours = abs((s_dt - l_dt).total_seconds()) / 3600
                 else:
                     best_time_diff_hours = None
 
@@ -557,8 +562,17 @@ def explain_empty_run(
                 "but names don't match between sources."
             )
             st.markdown("**What to try:**")
-            st.markdown("- Check the Diagnostics tab for unmatched name details")
+            st.markdown("- Check the Fix Issues tab for unmatched name details")
             st.markdown("- Team name aliases may need updating")
+        elif fixtures_fetched and odds_fetched and fixtures_fetched > odds_fetched * 5:
+            st.info(
+                f"Found {fixtures_fetched} fixture(s) but only {odds_fetched} odds event(s) \u2014 "
+                "the odds source covers fewer games than the fixture source for this league."
+            )
+            st.markdown("**What to try:**")
+            st.markdown("- The odds scraper may only cover major matchups, not the full schedule")
+            st.markdown("- Try again closer to game day when more lines are posted")
+            st.markdown("- Check the Fix Issues tab to compare team names between sources")
         else:
             st.info(
                 f"Found {fixtures_fetched} fixture(s) and {odds_fetched} odds event(s), "

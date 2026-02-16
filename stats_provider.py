@@ -78,6 +78,12 @@ def _matches_league(game_league_str: str, accept: list, league_key: str = "") ->
     if league_key == "Super Rugby Pacific":
         return "super rugby" in gl and "women" not in gl
 
+    if league_key == "College Basketball":
+        return any(pat in gl for pat in accept) and "women" not in gl and "nba" not in gl
+
+    if league_key == "College Football":
+        return any(pat in gl for pat in accept) and "women" not in gl and "nfl" not in gl
+
     return any(pat in gl for pat in accept)
 
 
