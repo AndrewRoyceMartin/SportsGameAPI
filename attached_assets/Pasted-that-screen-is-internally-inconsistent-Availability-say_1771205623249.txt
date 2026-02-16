@@ -1,0 +1,140 @@
+that screen is internally inconsistent:
+
+Availability says NBA is “Ready” with 20 fixtures (3-day window) ✅
+
+But the run says “No odds data available for NBA” (odds fetched = 0) ❌
+
+That almost never means “book hasn’t posted lines” if you’re getting 20 NBA fixtures. It usually means your odds fetcher is returning an empty list because of routing/config/parsing.
+
+Below is the fastest way to isolate exactly where it’s failing (Replit-friendly, minimal edits).
+
+What’s most likely wrong (ranked)
+1) NBA is being routed to the wrong odds provider
+
+You recently added Sportsbet (AU) routing and “Scan All”. A common bug is:
+
+NBA accidentally goes through the Sportsbet path, or
+
+“effective_league” becomes "All" (or a label) and routes wrong, or
+
+league keys don’t match the expected map (NBA vs nba vs Basketball/NBA).
+
+Symptom: Odds fetch returns [] with no error.
+
+2) Odds fetch is succeeding but being filtered to zero
+
+Example causes:
+
+your odds API returns events, but your “within lookahead window” filter rejects them due to timezone parsing
+
+your code requires moneyline present and drops everything (e.g., moneyLine missing/shape mismatch)
+
+Symptom: Odds source “works”, but post-filter count becomes 0.
+
+3) The odds call is failing but errors are swallowed
+
+If you try/except and return [], the UI will show “no odds available” instead of the real error.
+
+Symptom: Always 0 odds, no diagnostics.
+
+Do this now: add 2 debug print blocks (takes 2 minutes)
+A) In odds_fetch.py — log routing + raw counts
+
+Find your main entry (whatever function pipeline.py calls; usually fetch_odds_games(...)).
+
+Add this at the very top of that function:
+
+print("[ODDS] fetch_odds_games league=", league)
+print("[ODDS] env keys present:",
+      "ODDS_API_KEY" in __import__("os").environ,
+      "APIFY_TOKEN" in __import__("os").environ)
+
+
+Then right before returning, add:
+
+print("[ODDS] returned games count =", len(games))
+if games:
+    g0 = games[0]
+    print("[ODDS] sample home/away/time =",
+          g0.get("homeTeam", {}).get("mediumName"),
+          "vs",
+          g0.get("awayTeam", {}).get("mediumName"),
+          g0.get("scheduledTime"))
+    print("[ODDS] sample keys =", list(g0.keys()))
+
+
+(Adjust variable name games to whatever you use.)
+
+B) In pipeline.py — log where odds drop to zero
+
+Right after you call the odds fetcher:
+
+print("[PIPE] fixtures fetched =", len(upcoming))
+print("[PIPE] odds fetched =", len(harvest_games))
+
+
+If harvest_games is 0, you’ve confirmed it’s not matching logic — it’s odds retrieval/routing/filtering.
+
+Run a single test from the Replit console (no UI)
+
+This avoids Streamlit state confusing things.
+
+python -c "from odds_fetch import fetch_odds_games; print(len(fetch_odds_games('NBA')))"
+
+
+If that prints 0, it’s 100% odds routing/config/filtering.
+
+If odds are 0, here’s the exact next check
+1) Confirm what provider NBA is using
+
+Open league_defaults.py / league_map.py and find NBA.
+You’re looking for something like:
+
+odds_provider = "theoddsapi" (or similar)
+
+OR odds_provider = "sportsbet" (this would be wrong for NBA)
+
+If NBA is pointing to Sportsbet, fix it so Sportsbet is only AU leagues.
+
+If odds fetched > 0 but UI says “no odds available”
+
+Then your post-processing is dropping them. The usual culprits:
+
+A) “With posted lines” logic is rejecting the shape
+
+Your UI message triggers when odds_fetched == 0, but you might actually be setting odds_fetched AFTER filtering for moneyline.
+
+So you need to log both:
+
+raw_odds_fetched
+
+odds_with_lines
+
+Make sure you’re not doing:
+
+harvest_games = [g for g in harvest_games if has_moneyline(g)]
+if not harvest_games:
+    "no odds data available"
+
+
+If you are, change the empty-run message to reflect the real case:
+
+“Odds events found but no moneyline posted” vs
+
+“Odds fetch returned zero events”
+
+One quick UI fix that will make this obvious instantly
+
+In your “No odds…” info box, append:
+
+odds provider being used
+
+whether API key present
+
+raw odds count vs filtered count
+
+Example message:
+
+No odds data for NBA (provider=…, api_key=present, raw=12, moneyline=0)
+
+That stops you guessing.
