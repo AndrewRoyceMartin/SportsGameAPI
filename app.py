@@ -27,6 +27,7 @@ from pipeline import (
     get_unmatched,
     run_backtest,
     run_walkforward_backtest,
+    tune_elo_params,
 )
 from ui_helpers import (
     show_diagnostics,
@@ -50,6 +51,7 @@ from ui_helpers import (
     render_quick_filters,
     render_au_season_banner,
     inject_action_styles,
+    render_tuning_results,
 )
 
 
@@ -509,6 +511,18 @@ def main():
                     )
                 render_walkforward_results(wf_result)
                 render_backtest_settings_button(wf_result)
+
+        st.divider()
+        st.subheader("Tune Elo Parameters")
+        st.caption(
+            "Grid search over K-factor and home advantage to find the best parameters "
+            "for this league. Uses log loss as the primary scoring metric."
+        )
+        if st.button("Run Tuning Grid Search", type="primary", use_container_width=True, key="run_tune"):
+            with st.spinner(f"Tuning parameters for {bt_league}... testing K and home advantage combinations"):
+                clear_events_cache()
+                tune_result = tune_elo_params(bt_league, total_days=270, train_days=210, test_days=30)
+            render_tuning_results(tune_result)
 
     with tab_diagnostics:
         run_data = st.session_state.get("last_run_data")

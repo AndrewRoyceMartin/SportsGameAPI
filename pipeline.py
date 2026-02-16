@@ -320,6 +320,8 @@ def run_backtest(
     confident_acc = confident_accuracy
     bucket_lift = (confident_acc - overall_acc) if confident_total > 0 else None
 
+    diagnostics = _compute_backtest_diagnostics(results)
+
     return {
         "league": league_label,
         "train_games": len(train_dicts),
@@ -335,6 +337,7 @@ def run_backtest(
         "bucket_lift": bucket_lift,
         "elo_params": ep,
         "games": results,
+        "diagnostics": diagnostics,
     }
 
 
@@ -365,6 +368,7 @@ def _score_fold(
     conf_buckets = {60: [0, 0], 65: [0, 0], 70: [0, 0]}
     naive_correct = 0
     fav_correct = 0
+    fold_game_results = []
 
     for g in test_games:
         is_draw = g.home_score == g.away_score
@@ -408,6 +412,19 @@ def _score_fold(
                 if is_correct:
                     conf_buckets[threshold][0] += 1
 
+        fold_game_results.append({
+            "home_team": g.home,
+            "away_team": g.away,
+            "home_score": g.home_score,
+            "away_score": g.away_score,
+            "predicted_winner": predicted_winner,
+            "predicted_prob": predicted_prob,
+            "correct": is_correct,
+            "home_elo": r_home,
+            "away_elo": r_away,
+            "p_home": p_home,
+        })
+
         rolling_dicts.append(_game_to_elo_dict(g))
 
     if total == 0:
@@ -433,6 +450,7 @@ def _score_fold(
         "conf_counts": {t: n for t, (_, n) in conf_buckets.items()},
         "naive_baseline_acc": naive_correct / total,
         "always_home_acc": fav_correct / total,
+        "fold_games": fold_game_results,
     }
 
 
@@ -502,6 +520,11 @@ def run_walkforward_backtest(
     if not fold_results:
         return {"error": "Not enough data for walk-forward validation.", "folds": []}
 
+    all_fold_games = []
+    for f in fold_results:
+        all_fold_games.extend(f.get("fold_games", []))
+    wf_diagnostics = _compute_backtest_diagnostics(all_fold_games)
+
     def _mean(vals):
         return sum(vals) / len(vals) if vals else 0
 
@@ -542,6 +565,201 @@ def run_walkforward_backtest(
             "naive_elo_brier_mean": _mean(naive_briers) if naive_briers else None,
             "always_home_acc": _mean([f["always_home_acc"] for f in fold_results]) if fold_results else None,
         },
+        "diagnostics": wf_diagnostics,
+    }
+
+
+def _compute_backtest_diagnostics(games: List[Dict[str, Any]]) -> Dict[str, Any]:
+    decisive = [g for g in games if g.get("correct") is not None]
+    if not decisive:
+        return {}
+
+    total = len(decisive)
+    picked_home_count = sum(1 for g in decisive if g["predicted_winner"] == g["home_team"])
+    actual_home_count = sum(
+        1 for g in decisive
+        if g["home_score"] > g["away_score"]
+    )
+    home_pick_rate = picked_home_count / total if total else 0
+    actual_home_rate = actual_home_count / total if total else 0
+    home_bias_gap = home_pick_rate - actual_home_rate
+
+    thresholds = [55, 60, 65, 70]
+    acc_by_conf = {}
+    for t in thresholds:
+        t_frac = t / 100.0
+        bucket = [g for g in decisive if g["predicted_prob"] >= t_frac]
+        if bucket:
+            correct = sum(1 for g in bucket if g["correct"])
+            acc_by_conf[f"{t}%+"] = {
+                "games": len(bucket),
+                "correct": correct,
+                "accuracy": correct / len(bucket),
+            }
+
+    from collections import Counter
+    wrong_confident = [
+        g for g in decisive
+        if not g["correct"] and g["predicted_prob"] >= 0.65
+    ]
+    team_wrong = Counter()
+    team_prob_sum = Counter()
+    for g in wrong_confident:
+        team_wrong[g["predicted_winner"]] += 1
+        team_prob_sum[g["predicted_winner"]] += g["predicted_prob"]
+    overconfident = []
+    for team, count in team_wrong.most_common(10):
+        overconfident.append({
+            "team": team,
+            "wrong_count": count,
+            "avg_prob": team_prob_sum[team] / count,
+        })
+
+    prob_buckets = [
+        ("50-55%", 0.50, 0.55),
+        ("55-60%", 0.55, 0.60),
+        ("60-65%", 0.60, 0.65),
+        ("65-70%", 0.65, 0.70),
+        ("70-80%", 0.70, 0.80),
+        ("80%+", 0.80, 1.01),
+    ]
+    calibration = []
+    for label, lo, hi in prob_buckets:
+        bucket = [g for g in decisive if lo <= g["predicted_prob"] < hi]
+        if bucket:
+            empirical = sum(1 for g in bucket if g["correct"]) / len(bucket)
+            midpoint = (lo + hi) / 2
+            calibration.append({
+                "bucket": label,
+                "predicted_avg": midpoint,
+                "empirical_win_rate": empirical,
+                "games": len(bucket),
+                "gap": empirical - midpoint,
+            })
+
+    return {
+        "home_pick_rate": home_pick_rate,
+        "actual_home_rate": actual_home_rate,
+        "home_bias_gap": home_bias_gap,
+        "acc_by_confidence": acc_by_conf,
+        "overconfident_losses": overconfident,
+        "calibration": calibration,
+        "total_decisive": total,
+    }
+
+
+def tune_elo_params(
+    league_label: str,
+    total_days: int = 240,
+    train_days: int = 180,
+    test_days: int = 30,
+) -> Dict[str, Any]:
+    ep_base = get_elo_params(league_label)
+    all_results = get_results_history(league=league_label, since_days=total_days)
+
+    if not all_results:
+        return {"error": "No historical results found."}
+
+    all_results.sort(key=lambda g: g.start_time_utc)
+
+    k_values = [10, 15, 20, 25, 30]
+    home_adv_values = list(range(-30, 81, 10))
+
+    best_score = float("inf")
+    best_params = {"k": ep_base["k"], "home_adv": ep_base["home_adv"]}
+    best_accuracy = 0.0
+    grid_results = []
+
+    cutoff_dt = all_results[-1].start_time_utc - timedelta(days=test_days)
+    train_start_dt = cutoff_dt - timedelta(days=train_days)
+
+    train_games = [
+        g for g in all_results
+        if g.start_time_utc >= train_start_dt and g.start_time_utc <= cutoff_dt
+        and g.home_score is not None and g.away_score is not None
+    ]
+    test_games = [
+        g for g in all_results
+        if g.start_time_utc > cutoff_dt
+        and g.home_score is not None and g.away_score is not None
+    ]
+
+    if not train_games or not test_games:
+        return {"error": "Not enough data for tuning."}
+
+    train_dicts = [_game_to_elo_dict(g) for g in train_games]
+
+    for k_val in k_values:
+        for ha_val in home_adv_values:
+            elo_kwargs = dict(
+                k=k_val, home_adv=ha_val,
+                scale=ep_base["scale"],
+                recency_half_life=ep_base["recency_half_life"],
+            )
+
+            rolling = list(train_dicts)
+            correct = 0
+            total = 0
+            log_loss_sum = 0.0
+
+            for g in test_games:
+                hs = g.home_score or 0
+                as_ = g.away_score or 0
+                if hs == as_:
+                    continue
+
+                ratings, _ = build_elo_ratings(rolling, **elo_kwargs)
+                r_h = float(ratings.get(g.home, 1500.0))
+                r_a = float(ratings.get(g.away, 1500.0))
+                p_home = elo_win_prob(r_h, r_a, home_adv=ha_val, scale=ep_base["scale"])
+
+                predicted = g.home if p_home >= 0.5 else g.away
+                actual_outcome = 1.0 if hs > as_ else 0.0
+                actual_winner = g.home if actual_outcome == 1.0 else g.away
+
+                total += 1
+                if predicted == actual_winner:
+                    correct += 1
+
+                p_clip = max(1e-10, min(1.0 - 1e-10, p_home))
+                log_loss_sum -= (
+                    actual_outcome * math.log(p_clip)
+                    + (1.0 - actual_outcome) * math.log(1.0 - p_clip)
+                )
+
+                rolling.append(_game_to_elo_dict(g))
+
+            if total == 0:
+                continue
+
+            ll = log_loss_sum / total
+            acc = correct / total
+
+            grid_results.append({
+                "K": k_val,
+                "Home Adv": ha_val,
+                "Log Loss": round(ll, 4),
+                "Accuracy": round(acc, 4),
+                "Games": total,
+            })
+
+            if ll < best_score:
+                best_score = ll
+                best_params = {"k": k_val, "home_adv": ha_val}
+                best_accuracy = acc
+
+    grid_results.sort(key=lambda x: x["Log Loss"])
+
+    return {
+        "league": league_label,
+        "best_params": best_params,
+        "best_log_loss": best_score,
+        "best_accuracy": best_accuracy,
+        "current_params": {"k": ep_base["k"], "home_adv": ep_base["home_adv"]},
+        "grid_results": grid_results[:20],
+        "total_combos": len(grid_results),
+        "train_games": len(train_dicts),
+        "test_games": len(test_games),
     }
 
 

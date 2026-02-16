@@ -112,8 +112,10 @@ SofaScore provides fixtures/results via sport-specific endpoints (basketball, ic
 - **Margin-of-victory weighting**: Blowouts update Elo more than close games using log(MOV+1) with auto-correction for rating gaps
 - **Recency decay**: Older training games have reduced K via exponential decay with configurable half-life per league
 - **Backtest scoring**: Brier score, log loss, bucket lift (confident vs overall accuracy delta)
+- **Backtest diagnostics**: Home bias panel (pick rate vs actual home win rate with 8% warning), accuracy by confidence thresholds (55/60/65/70%), overconfident losses table (teams wrong at 65%+), calibration table (predicted vs empirical win rate per bucket)
 - **Walk-forward validation**: Multi-fold backtesting with mean±std of all metrics, naive Elo baseline comparison, always-home baseline, per-fold detail table
 - **Baseline comparisons**: Naive Elo (K=20, HomeAdv=65, Scale=400, no MOV/recency), always-pick-home, coin-flip Brier
+- **Elo parameter tuning**: Grid search over K-factor (10-30) and home advantage (-30 to +80) scored by log loss + accuracy; shows current vs best params with top 20 combos
 
 ## UI Tabs
 1. **Place Bets** - Hero card + card-based shortlist of top value bets with quality badges, bet builder, and save controls

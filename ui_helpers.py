@@ -1197,6 +1197,128 @@ def render_saved_picks() -> None:
         st.info("No saved picks yet.")
 
 
+def render_tuning_results(tune: Dict[str, Any]) -> None:
+    if tune.get("error"):
+        st.warning(tune["error"])
+        return
+
+    st.subheader(f"Elo Parameter Tuning — {tune['league']}")
+    st.caption(
+        f"Tested {tune['total_combos']} combinations on {tune['test_games']} games "
+        f"(trained on {tune['train_games']})"
+    )
+
+    current = tune.get("current_params", {})
+    best = tune.get("best_params", {})
+
+    c1, c2 = st.columns(2)
+    with c1:
+        st.markdown("**Current Parameters**")
+        st.metric("K-factor", current.get("k", "?"))
+        st.metric("Home Advantage", current.get("home_adv", "?"))
+    with c2:
+        st.markdown("**Best Parameters (by log loss)**")
+        st.metric("K-factor", best.get("k", "?"))
+        st.metric("Home Advantage", best.get("home_adv", "?"))
+        st.metric("Log Loss", f"{tune['best_log_loss']:.4f}")
+        st.metric("Accuracy", f"{tune['best_accuracy']:.1%}")
+
+    changed = (best.get("k") != current.get("k") or best.get("home_adv") != current.get("home_adv"))
+    if changed:
+        st.info(
+            f"Tuning suggests K={best['k']}, Home Adv={best['home_adv']} "
+            f"(currently K={current['k']}, Home Adv={current['home_adv']}). "
+            f"Update ELO_PARAMS in league_defaults.py to apply."
+        )
+    else:
+        st.success("Current parameters are already optimal for this data window.")
+
+    grid = tune.get("grid_results", [])
+    if grid:
+        with st.expander(f"Top {len(grid)} parameter combinations", expanded=False):
+            st.dataframe(pd.DataFrame(grid), use_container_width=True, hide_index=True)
+
+
+def render_backtest_diagnostics(diag: Dict[str, Any]) -> None:
+    if not diag:
+        return
+
+    st.divider()
+    st.markdown("**Diagnostics**")
+
+    d1, d2 = st.columns(2)
+    with d1:
+        home_pick = diag.get("home_pick_rate", 0)
+        actual_home = diag.get("actual_home_rate", 0)
+        gap = diag.get("home_bias_gap", 0)
+        st.metric(
+            "Home Pick Rate",
+            f"{home_pick:.1%}",
+            help="How often the model picks the home team to win.",
+        )
+        st.metric(
+            "Actual Home Win Rate",
+            f"{actual_home:.1%}",
+            help="How often the home team actually won in test games.",
+        )
+        if abs(gap) > 0.08:
+            st.warning(
+                f"Home bias gap: {gap:+.1%} — the model {'over-picks' if gap > 0 else 'under-picks'} "
+                f"home teams by more than 8%. Consider adjusting home advantage."
+            )
+        else:
+            st.caption(f"Home bias gap: {gap:+.1%} (within normal range)")
+
+    with d2:
+        acc_data = diag.get("acc_by_confidence", {})
+        if acc_data:
+            acc_rows = []
+            for label, info in acc_data.items():
+                acc_rows.append({
+                    "Threshold": label,
+                    "Games": info["games"],
+                    "Correct": info["correct"],
+                    "Accuracy": f"{info['accuracy']:.0%}",
+                })
+            st.markdown("**Accuracy by confidence threshold**")
+            st.caption("Higher thresholds should generally show higher accuracy.")
+            st.dataframe(pd.DataFrame(acc_rows), use_container_width=True, hide_index=True)
+
+    overconf = diag.get("overconfident_losses", [])
+    if overconf:
+        with st.expander(f"Overconfident losses ({len(overconf)} teams)", expanded=False):
+            st.caption(
+                "Teams the model was 65%+ confident on but got wrong. "
+                "Frequent appearances suggest the model overrates these teams."
+            )
+            oc_rows = []
+            for entry in overconf:
+                oc_rows.append({
+                    "Team": entry["team"],
+                    "Wrong Picks": entry["wrong_count"],
+                    "Avg Prob": f"{entry['avg_prob']:.0%}",
+                })
+            st.dataframe(pd.DataFrame(oc_rows), use_container_width=True, hide_index=True)
+
+    cal = diag.get("calibration", [])
+    if cal:
+        with st.expander("Calibration table", expanded=False):
+            st.caption(
+                "Compares predicted confidence to actual win rate. "
+                "Well-calibrated models have small gaps between predicted and empirical."
+            )
+            cal_rows = []
+            for entry in cal:
+                cal_rows.append({
+                    "Bucket": entry["bucket"],
+                    "Predicted Avg": f"{entry['predicted_avg']:.0%}",
+                    "Empirical Win Rate": f"{entry['empirical_win_rate']:.0%}",
+                    "Gap": f"{entry['gap']:+.0%}",
+                    "Games": entry["games"],
+                })
+            st.dataframe(pd.DataFrame(cal_rows), use_container_width=True, hide_index=True)
+
+
 def render_walkforward_results(wf: Dict[str, Any]) -> None:
     if wf.get("error"):
         st.warning(wf["error"])
@@ -1306,6 +1428,8 @@ def render_walkforward_results(wf: Dict[str, Any]) -> None:
         })
     st.dataframe(pd.DataFrame(fold_rows), use_container_width=True, hide_index=True)
 
+    render_backtest_diagnostics(wf.get("diagnostics", {}))
+
     ep = wf.get("elo_params")
     if ep:
         with st.expander("Elo Parameters Used"):
@@ -1403,6 +1527,8 @@ def render_backtest_results(bt: Dict[str, Any]) -> None:
     if bucket_rows:
         st.markdown("**Accuracy by confidence level**")
         st.dataframe(pd.DataFrame(bucket_rows), use_container_width=True, hide_index=True)
+
+    render_backtest_diagnostics(bt.get("diagnostics", {}))
 
     st.divider()
     st.markdown("**Individual game results**")
