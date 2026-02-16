@@ -11,11 +11,11 @@ TIME_WINDOW_HOURS = 4
 FUZZY_THRESHOLD = 60
 NAME_ONLY_THRESHOLD = 75
 
-_AU_TIME_WINDOW_HOURS = 24
+_AU_TIME_WINDOW_HOURS = 6
 _AU_FUZZY_THRESHOLD = 55
 _AU_NAME_ONLY_THRESHOLD = 70
 
-_AU_LEAGUES = {"AFL", "NRL", "NBL"}
+_AU_LEAGUES = {"AFL", "NRL", "NBL", "A-League Men", "Super Rugby Pacific"}
 
 _ALIASES = {
     "psg": "paris saint germain",

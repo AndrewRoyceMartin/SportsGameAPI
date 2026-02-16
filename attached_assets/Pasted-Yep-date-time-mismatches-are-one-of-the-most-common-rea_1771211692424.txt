@@ -1,0 +1,160 @@
+Yep — date/time mismatches are one of the most common reasons your “fixtures fetched ✅ / odds fetched ✅ / matched = 0 ❌” happens, even when names are fine.
+
+Below is the exact set of checks + the fixes that usually resolve it in your codebase (Sportsbet + SofaScore + Harvest).
+
+1) First, confirm what “kind” of datetimes you’re comparing
+
+Right now your matcher does:
+
+fx_dt = fx.start_time_utc (from SofaScore)
+
+og_dt = _parse_iso(og["scheduledTime"]) (from odds provider)
+
+Then compares abs(fx_dt - og_dt).
+
+If one is “UTC naive” and the other is “local time naive pretending to be UTC”, you’ll miss matches.
+
+Quick debug (add temporarily in match_games_to_odds)
+
+Print one fixture + one odds game:
+
+print("FX", fx_home, fx_away, fx_dt, type(fx_dt))
+print("OG", og_home, og_away, og_time_str, og_dt, type(og_dt))
+
+
+You want both of these to represent the same reference frame (recommended: UTC).
+
+2) Sportsbet is the most likely culprit (local time parsing)
+
+Your Sportsbet actor returns times like:
+
+"Thursday, 5 Mar 08:30" (no year, local AU time)
+
+"22:00" (time only on some endpoints)
+
+sometimes includes timezone implicitly (Sydney = AEDT/AEST depending on month)
+
+The two classic bugs
+Bug A — parsing with the wrong timezone (AEST vs AEDT)
+
+Early March in NSW is typically AEDT (UTC+11). If your parser assumes AEST (UTC+10), you’ll be off by 1 hour.
+
+Bug B — missing year → inferred year wrong
+
+If the Sportsbet string doesn’t include a year, you’re probably doing “use current year”.
+That breaks around season boundaries and when scraping far-ahead games.
+
+✅ Fix both by parsing in Australia/Sydney and safely inferring the year.
+
+3) The correct approach: parse Sportsbet as Australia/Sydney → convert to UTC
+
+In sportsbet_odds.py, make sure _parse_sportsbet_datetime():
+
+uses zoneinfo.ZoneInfo("Australia/Sydney")
+
+fills in a year intelligently
+
+converts to UTC
+
+returns a naive UTC datetime (to match your current matcher style)
+
+Drop-in implementation (safe + robust)
+from datetime import datetime
+from zoneinfo import ZoneInfo
+
+SYD = ZoneInfo("Australia/Sydney")
+UTC = ZoneInfo("UTC")
+
+def _parse_sportsbet_datetime(event_time: str) -> datetime | None:
+    if not event_time:
+        return None
+
+    s = event_time.strip()
+
+    # Expected examples:
+    # "Thursday, 5 Mar 08:30"
+    # "Friday, 6 Mar 09:05"
+    # If you also see "07:00" (time only), you *cannot* map it to a date safely.
+    if "," not in s and ":" in s and len(s) <= 5:
+        return None  # time-only is not reliably matchable
+
+    # Parse without year first
+    try:
+        dt = datetime.strptime(s, "%A, %d %b %H:%M")
+    except ValueError:
+        # if Sportsbet format differs, add more formats here
+        return None
+
+    now_local = datetime.now(SYD)
+
+    # add year heuristic:
+    candidate = dt.replace(year=now_local.year)
+
+    # if candidate is more than ~6 months in the past, it's probably next year
+    # (helps around Dec/Jan + preseason scheduling)
+    if (candidate - now_local).days < -180:
+        candidate = candidate.replace(year=now_local.year + 1)
+
+    # attach Sydney tz, convert to UTC, return naive UTC
+    aware = candidate.replace(tzinfo=SYD)
+    utc_dt = aware.astimezone(UTC).replace(tzinfo=None)
+    return utc_dt
+
+
+Why this matters: it automatically handles AEDT/AEST shifts based on date.
+
+4) Ensure SofaScore “start_time_utc” is actually UTC
+
+In stats_provider.py, verify you’re not doing something like:
+
+parsing ISO then dropping timezone without converting
+
+treating local timestamps as UTC
+
+The correct pattern is:
+
+if you get a tz-aware datetime, convert it to UTC and then drop tzinfo (or keep tz-aware everywhere)
+
+Example “make it UTC naive” helper:
+
+from zoneinfo import ZoneInfo
+
+UTC = ZoneInfo("UTC")
+
+def _to_utc_naive(dt: datetime) -> datetime:
+    if dt.tzinfo is None:
+        # assume already UTC
+        return dt
+    return dt.astimezone(UTC).replace(tzinfo=None)
+
+
+Then when building your Game objects:
+
+always store start_time_utc = _to_utc_naive(parsed_dt)
+
+5) Harvest scheduledTime vs Sportsbet scheduledTime consistency
+
+Harvest tends to return "2026-03-04T21:30:00Z" (already UTC).
+Your _parse_iso() parses it as naive — that’s fine as long as it’s truly UTC.
+
+Sportsbet must match that convention: scheduledTime should also be UTC with Z (which your _to_harvest_format() does).
+
+So the key is: Sportsbet’s start_utc going into _to_harvest_format() must already be UTC-correct.
+
+6) A tiny but important check: don’t allow matching when odds time is missing
+
+If scheduledTime == "", your matcher falls back to name-only thresholds.
+
+That is dangerous for team sports (especially in AU where names can be similar and rounds can overlap).
+
+Recommendation:
+
+For team sports leagues (AFL/NRL/NBL/NHL/NBA), if odds time is missing, skip matching.
+
+In match_games_to_odds, add:
+
+if og_dt is None:
+    continue
+
+
+(Keep name-only matching for tennis/UFC if you want.)

@@ -1,0 +1,86 @@
+Run the backtest first, then use tuning / grid search to improve it, then re-run the backtest to confirm the improvement holds.
+
+What each one is
+
+Backtest
+
+Purpose: Measure how good the current model/settings are on historical games.
+
+Output: accuracy, accuracy by confidence buckets, calibration, ROI-style metrics if you simulate betting.
+
+Uses: “Is this model any good for this league right now?”
+
+Tuning / Grid Search
+
+Purpose: Try many parameter combinations to find settings that score better.
+
+Typical params: K-factor, home advantage, margin-of-victory weighting, recency weighting, confidence threshold, etc.
+
+Output: “Best” parameter set according to a scoring metric (accuracy, log loss, Brier score, ROI proxy).
+
+The correct order (so you don’t fool yourself)
+
+Baseline backtest
+
+Establish a benchmark with your current defaults.
+
+Save the metrics (overall, 60%+, 65%+, 70%+, calibration).
+
+Tuning / grid search (on training only)
+
+Tune parameters using only past data (or the “training split” inside your backtest).
+
+Select parameters based on a proper metric (more on this below).
+
+Final backtest on a held-out period
+
+Re-run backtest on a test window that was not used to pick parameters.
+
+This tells you if tuning generalised or just overfit.
+
+The big difference in plain terms
+
+Backtest answers: “How accurate are we?”
+
+Grid search answers: “What settings make us most accurate (or most profitable)?”
+
+If you tune on the same test set you report, you’ll inflate results.
+
+What to optimise (accuracy is not always the best)
+
+If you only optimise “% correct”, you’ll often get worse betting performance. Better:
+
+Log loss: rewards correct confidence, punishes overconfidence hard.
+
+Brier score: similar, easier to interpret.
+
+Calibration gap: whether “70%” actually wins ~70%.
+
+Betting proxy metric: simulated EV/ROI with realistic constraints.
+
+Recommendation for your app:
+Use log loss + calibration for tuning, then display accuracy by confidence bucket for user trust.
+
+Replit instructions (what to do in your app workflow)
+
+In your Trust & Tuning tab:
+
+Pick league (e.g., NBA/NHL/NCAAF)
+
+Run Backtest (Baseline) first
+
+If baseline is acceptable (say >58–60% with meaningful lift at 65%+), click:
+
+Run Tuning Grid Search
+
+Apply best params
+
+Run Backtest again (same league, same date windows) and compare.
+
+Extra: Why your “80% confidence looks good”
+
+Because you’re filtering to extreme favourites where Elo is most certain. That’s normal:
+
+the hit-rate is high,
+
+but the value might not be (odds are short, market is efficient).
