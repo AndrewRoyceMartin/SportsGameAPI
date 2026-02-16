@@ -12,6 +12,8 @@ from league_map import (
     ALL_SPORTS,
     LEAGUE_SPORT,
     SPORT_DISPLAY_TO_KEY,
+    EXPERIMENTAL_LEAGUES,
+    _SEPARATOR,
 )
 from league_defaults import DEFAULTS, RUN_PROFILES, apply_profile
 from stats_provider import clear_events_cache
@@ -228,7 +230,31 @@ def main():
             st.warning("No leagues match your filter.")
             st.stop()
 
-        league_options = ["All"] + leagues
+        all_real_leagues = [l for l in leagues if not is_separator(l)]
+
+        preflight_info = st.session_state.get("preflight_info", {})
+
+        def _league_format(lg: str) -> str:
+            if is_separator(lg):
+                return lg
+            info = preflight_info.get(lg)
+            if info is not None:
+                n = info.get("fixtures_count", 0)
+                return f"{lg} ({n} upcoming)" if n > 0 else f"{lg} (0 upcoming)"
+            return lg
+
+        if preflight_info:
+            prod_leagues = [l for l in leagues if not is_separator(l) and l not in EXPERIMENTAL_LEAGUES]
+            exp_leagues = [l for l in leagues if not is_separator(l) and l in EXPERIMENTAL_LEAGUES]
+            prod_leagues.sort(key=lambda l: (-preflight_info.get(l, {}).get("fixtures_count", 0), l))
+            exp_leagues.sort(key=lambda l: (-preflight_info.get(l, {}).get("fixtures_count", 0), l))
+            if prod_leagues and exp_leagues:
+                sorted_leagues = prod_leagues + [_SEPARATOR] + exp_leagues
+            else:
+                sorted_leagues = prod_leagues + exp_leagues
+            league_options = ["All"] + sorted_leagues
+        else:
+            league_options = ["All"] + leagues
 
         stored_league = st.session_state.get("league_select")
         if stored_league and stored_league not in league_options:
@@ -239,6 +265,7 @@ def main():
             "League",
             options=league_options,
             index=default_idx,
+            format_func=_league_format,
             key="league_select",
             help="Choose a league to scan, or 'All' for multi-league scan.",
         )
@@ -248,14 +275,20 @@ def main():
             st.stop()
 
         run_all = league_label == "All"
-        all_real_leagues = [l for l in leagues if not is_separator(l)]
 
         avail_key = "preflight_results"
+        scan_window = st.selectbox(
+            "Scan window",
+            options=[3, 7, 14, 21],
+            index=1,
+            help="How many days ahead to check for upcoming games.",
+            key="scan_window",
+        )
         check_cols = st.columns([1, 1])
         with check_cols[0]:
             check_single = st.button(
                 "Check Availability",
-                help="Quick check if fixtures exist for the selected league(s) in the lookahead window.",
+                help="Quick check if fixtures exist for the selected league(s).",
                 use_container_width=True,
                 key="preflight_btn",
             )
@@ -271,19 +304,25 @@ def main():
             if run_all:
                 with st.spinner("Checking all leagues..."):
                     clear_events_cache()
-                    results = preflight_scan(all_real_leagues)
+                    results = preflight_scan(all_real_leagues, lookahead_days=scan_window)
                 st.session_state[avail_key] = results
             else:
                 with st.spinner(f"Checking {league_label}..."):
                     clear_events_cache()
-                    result = preflight_availability(league_label)
+                    result = preflight_availability(league_label, lookahead_override=scan_window)
                 st.session_state[avail_key] = [result]
 
         if scan_all_btn:
             with st.spinner(f"Scanning {len(all_real_leagues)} leagues..."):
                 clear_events_cache()
-                results = preflight_scan(all_real_leagues)
+                results = preflight_scan(all_real_leagues, lookahead_days=scan_window)
             st.session_state[avail_key] = results
+
+        if check_single or scan_all_btn:
+            pf_data = st.session_state.get(avail_key, [])
+            info_map = {r["league"]: r for r in pf_data}
+            st.session_state["preflight_info"] = info_map
+            st.rerun()
 
         preflight_data = st.session_state.get(avail_key)
         if preflight_data:

@@ -28,10 +28,15 @@ def preflight_availability(
     today = date.today()
     date_to = today + timedelta(days=lookahead)
 
+    earliest_utc = None
     try:
         fixtures = get_upcoming_games(league=league_key, date_from=today, date_to=date_to)
         fixtures_count = len(fixtures)
         stats_error = False
+        timed = [g for g in fixtures if getattr(g, "start_time_utc", None) is not None]
+        if timed:
+            timed.sort(key=lambda g: g.start_time_utc)
+            earliest_utc = timed[0].start_time_utc
     except Exception as exc:
         _preflight_logger.warning("Preflight stats error for %s: %s", league_key, exc)
         fixtures_count = 0
@@ -47,6 +52,7 @@ def preflight_availability(
     return {
         "league": league_key,
         "fixtures_count": fixtures_count,
+        "earliest_utc": earliest_utc,
         "lookahead_days": lookahead,
         "window": (str(today), str(date_to)),
         "status": status,
@@ -56,11 +62,12 @@ def preflight_availability(
 def preflight_scan(
     leagues: List[str],
     *,
+    lookahead_days: int | None = None,
     delay: float = 0.25,
 ) -> List[Dict[str, Any]]:
     results: List[Dict[str, Any]] = []
     for lg in leagues:
-        results.append(preflight_availability(lg))
+        results.append(preflight_availability(lg, lookahead_override=lookahead_days))
         if delay > 0 and lg != leagues[-1]:
             _time.sleep(delay)
     return results

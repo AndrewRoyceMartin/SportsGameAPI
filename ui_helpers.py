@@ -111,30 +111,42 @@ def render_availability_table(rows: List[Dict[str, Any]]) -> None:
         st.info("No availability data yet. Click **Check Availability** to scan.")
         return
 
-    ready = [r for r in rows if r["status"] == "ready"]
-    empty = [r for r in rows if r["status"] != "ready"]
+    sorted_rows = sorted(rows, key=lambda r: (-r["fixtures_count"], r["league"]))
+
+    ready = [r for r in sorted_rows if r["status"] == "ready"]
+    empty = [r for r in sorted_rows if r["status"] != "ready"]
 
     if ready:
         st.markdown(f"**{len(ready)}** league(s) ready to run")
     if empty:
         st.markdown(f"**{len(empty)}** league(s) with no fixtures in window")
 
-    for r in rows:
-        label, color, tip = _STATUS_LABELS.get(r["status"], ("Unknown", "gray", ""))
+    for r in sorted_rows:
+        label, color, _tip = _STATUS_LABELS.get(r["status"], ("Unknown", "gray", ""))
         badge = f":{color}[{label}]"
         fixtures_txt = f"{r['fixtures_count']} fixture(s)" if r["fixtures_count"] else "0 fixtures"
         window_txt = f"{r['lookahead_days']}d window"
 
-        col1, col2, col3 = st.columns([3, 3, 2])
+        earliest = r.get("earliest_utc")
+        if earliest:
+            try:
+                earliest_str = earliest.strftime("%a %d %b %H:%M UTC")
+            except Exception:
+                earliest_str = str(earliest)[:16]
+            detail = f"{fixtures_txt} · {window_txt} · Next: {earliest_str}"
+        else:
+            detail = f"{fixtures_txt} · {window_txt}"
+
+        col1, col2, col3 = st.columns([3, 4, 1])
         with col1:
             st.markdown(f"**{r['league']}** {badge}")
         with col2:
-            st.caption(f"{fixtures_txt} · {window_txt}")
+            st.caption(detail)
         with col3:
             if r["status"] == "no_fixtures":
                 suggest = min(r["lookahead_days"] * 2, 28)
                 if suggest > r["lookahead_days"]:
-                    st.caption(f"Try {suggest}d lookahead")
+                    st.caption(f"{suggest}d?")
 
 
 _AU_PRESEASON_LEAGUES = {"AFL", "NRL", "NBL"}

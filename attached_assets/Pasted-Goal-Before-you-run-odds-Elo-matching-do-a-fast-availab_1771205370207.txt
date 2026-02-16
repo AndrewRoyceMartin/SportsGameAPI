@@ -1,0 +1,170 @@
+Goal
+
+Before you run odds + Elo + matching, do a fast “availability preflight” that answers:
+
+Which leagues (within your current sport filter / selection list) actually have upcoming fixtures?
+
+How many?
+
+What’s the earliest game time?
+
+Then you can prioritise leagues with real data and avoid out-of-season dead ends.
+
+What to add (recommended UI behaviour)
+In app.py (sidebar or top of “Place Bets”)
+
+Add a button:
+
+“Check upcoming games”
+
+Runs a quick scan for the currently filtered leagues (e.g., Basketball / Hockey / etc.)
+
+Shows a small table:
+
+League | Upcoming (N) | Earliest start (local) | Window scanned
+
+And optionally:
+
+Auto-sort league dropdown so leagues with N>0 float to the top
+
+Add a suffix in the dropdown like:
+
+NHL (12 upcoming)
+
+AFL (0 upcoming) (greyed / pushed to bottom)
+
+Implementation details (copy/paste-ready)
+1) Add a preflight function (put in stats_provider.py OR features.py)
+
+This uses your existing get_upcoming_games() so it’s consistent with the pipeline.
+
+from __future__ import annotations
+
+from datetime import date, timedelta
+from typing import Dict, List, Tuple, Optional
+
+import streamlit as st
+
+from stats_provider import get_upcoming_games
+
+
+@st.cache_data(ttl=600)  # cache for 10 minutes
+def preflight_upcoming_counts(
+    leagues: List[str],
+    days: int = 7,
+) -> Dict[str, dict]:
+    """
+    Returns per-league availability info:
+    - count of upcoming fixtures in [today, today+days]
+    - earliest start time (UTC datetime) if any
+    """
+    today = date.today()
+    end = today + timedelta(days=days)
+
+    out: Dict[str, dict] = {}
+    for lg in leagues:
+        try:
+            games = get_upcoming_games(lg, date_from=today, date_to=end)
+            games_sorted = sorted(
+                [g for g in games if getattr(g, "start_time_utc", None) is not None],
+                key=lambda g: g.start_time_utc,
+            )
+            earliest = games_sorted[0].start_time_utc if games_sorted else None
+            out[lg] = {"count": len(games), "earliest_utc": earliest, "error": None}
+        except Exception as e:
+            out[lg] = {"count": 0, "earliest_utc": None, "error": str(e)}
+    return out
+
+2) Wire it into app.py
+
+Where you already build the filtered league list (based on sport selection + search), add:
+
+import pandas as pd
+import streamlit as st
+
+from your_module_where_you_put_it import preflight_upcoming_counts
+
+# Assume this exists already in your code:
+# filtered_leagues = [...]
+
+st.sidebar.markdown("### Quick preflight")
+
+days = st.sidebar.selectbox(
+    "Scan window",
+    options=[3, 7, 14, 21],
+    index=1,
+    help="Checks the fixtures source only (fast). Helps avoid out-of-season leagues.",
+)
+
+if st.sidebar.button("Check upcoming games", use_container_width=True):
+    info = preflight_upcoming_counts(filtered_leagues, days=days)
+
+    rows = []
+    for lg, d in info.items():
+        rows.append(
+            {
+                "League": lg,
+                "Upcoming": d["count"],
+                "Earliest (UTC)": d["earliest_utc"],
+                "Error": d["error"] or "",
+            }
+        )
+
+    df = pd.DataFrame(rows).sort_values(["Upcoming", "League"], ascending=[False, True])
+    st.sidebar.dataframe(df, use_container_width=True, hide_index=True)
+
+    # Optional: store results so you can reuse them to sort dropdowns
+    st.session_state["preflight_info"] = info
+    st.session_state["preflight_days"] = days
+
+3) (Optional but very useful) Auto-sort the league dropdown using preflight results
+
+Right before rendering your league selectbox:
+
+pre = st.session_state.get("preflight_info")
+if pre:
+    filtered_leagues = sorted(
+        filtered_leagues,
+        key=lambda lg: (pre.get(lg, {}).get("count", 0), lg),
+        reverse=True,
+    )
+
+
+And if you want the dropdown labels to show counts:
+
+def league_label(lg: str) -> str:
+    pre = st.session_state.get("preflight_info", {})
+    n = pre.get(lg, {}).get("count")
+    return f"{lg} ({n} upcoming)" if n is not None else lg
+
+selected_league = st.selectbox(
+    "League",
+    options=filtered_leagues,
+    format_func=league_label,
+)
+
+Replit instructions (exact steps)
+
+Open your Replit project
+
+Add the function:
+
+Either append it to stats_provider.py (near other helper functions), or create a new file like preflight.py
+
+Update app.py:
+
+Add the sidebar “Quick preflight” section
+
+Add the Check upcoming games button
+
+Add the optional dropdown auto-sort + (N upcoming) labels
+
+Click Run
+
+In the app:
+
+Pick a sport filter (e.g., Hockey)
+
+Click Check upcoming games
+
+Choose a league with N > 0 and run your normal pipeline
