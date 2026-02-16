@@ -138,16 +138,34 @@ def render_availability_table(rows: List[Dict[str, Any]]) -> None:
         else:
             detail = f"{fixtures_txt} · {window_txt}"
 
-        col1, col2, col3 = st.columns([3, 4, 1])
+        col1, col2, col3 = st.columns([3, 5, 3])
         with col1:
             st.markdown(f"**{r['league']}** {badge}")
         with col2:
             st.caption(detail)
         with col3:
-            if r["status"] == "no_fixtures":
-                suggest = min(r["lookahead_days"] * 2, 28)
-                if suggest > r["lookahead_days"]:
-                    st.caption(f"{suggest}d?")
+            _render_availability_action(r, ready)
+
+
+def _render_availability_action(r: Dict[str, Any], ready_rows: List[Dict[str, Any]]) -> None:
+    league = r["league"]
+    status = r["status"]
+    lookahead = r["lookahead_days"]
+
+    if status == "ready":
+        st.caption(":green[Ready to scan]")
+    elif status == "no_fixtures":
+        suggest = min(lookahead * 3, 28)
+        if suggest > lookahead:
+            st.caption(f"Try {suggest}-day lookahead")
+        else:
+            ready_names = [rr["league"] for rr in ready_rows]
+            if ready_names:
+                st.caption(f"Try: {', '.join(ready_names[:3])}")
+            else:
+                st.caption("Check back later")
+    elif status == "error":
+        st.caption("Retry later")
 
 
 _AU_PRESEASON_LEAGUES = {"AFL", "NRL", "NBL"}
