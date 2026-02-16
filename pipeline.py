@@ -725,6 +725,8 @@ def tune_elo_params(
     train_days: int = 180,
     test_days: int = 30,
 ) -> Dict[str, Any]:
+    import streamlit as st
+
     ep_base = get_elo_params(league_label)
     all_results = get_results_history(league=league_label, since_days=total_days)
 
@@ -733,13 +735,13 @@ def tune_elo_params(
 
     all_results.sort(key=lambda g: g.start_time_utc)
 
-    k_values = [10, 15, 20, 25, 30]
-    home_adv_values = list(range(-30, 81, 10))
+    k_values = [12, 18, 24, 32]
+    home_adv_values = [0, 20, 40, 60, 80]
 
     best_score = float("inf")
     best_params = {"k": ep_base["k"], "home_adv": ep_base["home_adv"]}
     best_accuracy = 0.0
-    grid_results = []
+    grid_results: List[Dict[str, Any]] = []
 
     cutoff_dt = all_results[-1].start_time_utc - timedelta(days=test_days)
     train_start_dt = cutoff_dt - timedelta(days=train_days)
@@ -760,64 +762,72 @@ def tune_elo_params(
 
     train_dicts = [_game_to_elo_dict(g) for g in train_games]
 
-    for k_val in k_values:
-        for ha_val in home_adv_values:
-            elo_kwargs = dict(
-                k=k_val, home_adv=ha_val,
-                scale=ep_base["scale"],
-                recency_half_life=ep_base["recency_half_life"],
-            )
+    grid = [(k_val, ha_val) for k_val in k_values for ha_val in home_adv_values]
+    total_combos = len(grid)
+    progress = st.progress(0)
+    status = st.empty()
 
-            rolling = list(train_dicts)
-            correct = 0
-            total = 0
-            log_loss_sum = 0.0
+    for combo_idx, (k_val, ha_val) in enumerate(grid, start=1):
+        status.caption(f"Quick calibrate: {combo_idx}/{total_combos} — K={k_val} HA={ha_val}")
+        progress.progress(combo_idx / total_combos)
 
-            for g in test_games:
-                hs = g.home_score or 0
-                as_ = g.away_score or 0
-                if hs == as_:
-                    continue
+        ratings, game_counts = build_elo_ratings(
+            train_dicts,
+            k=float(k_val),
+            home_adv=float(ha_val),
+            scale=ep_base["scale"],
+            recency_half_life=ep_base["recency_half_life"],
+        )
 
-                ratings, _ = build_elo_ratings(rolling, **elo_kwargs)
-                r_h = float(ratings.get(g.home, 1500.0))
-                r_a = float(ratings.get(g.away, 1500.0))
-                p_home = elo_win_prob(r_h, r_a, home_adv=ha_val, scale=ep_base["scale"])
+        correct = 0
+        total = 0
+        log_loss_sum = 0.0
 
-                predicted = g.home if p_home >= 0.5 else g.away
-                actual_outcome = 1.0 if hs > as_ else 0.0
-                actual_winner = g.home if actual_outcome == 1.0 else g.away
-
-                total += 1
-                if predicted == actual_winner:
-                    correct += 1
-
-                p_clip = max(1e-10, min(1.0 - 1e-10, p_home))
-                log_loss_sum -= (
-                    actual_outcome * math.log(p_clip)
-                    + (1.0 - actual_outcome) * math.log(1.0 - p_clip)
-                )
-
-                rolling.append(_game_to_elo_dict(g))
-
-            if total == 0:
+        for g in test_games:
+            hs = g.home_score or 0
+            as_ = g.away_score or 0
+            if hs == as_:
                 continue
 
-            ll = log_loss_sum / total
-            acc = correct / total
+            r_h = float(ratings.get(g.home, 1500.0))
+            r_a = float(ratings.get(g.away, 1500.0))
+            p_home = elo_win_prob(r_h, r_a, home_adv=ha_val, scale=ep_base["scale"])
 
-            grid_results.append({
-                "K": k_val,
-                "Home Adv": ha_val,
-                "Log Loss": round(ll, 4),
-                "Accuracy": round(acc, 4),
-                "Games": total,
-            })
+            predicted = g.home if p_home >= 0.5 else g.away
+            actual_outcome = 1.0 if hs > as_ else 0.0
+            actual_winner = g.home if actual_outcome == 1.0 else g.away
 
-            if ll < best_score:
-                best_score = ll
-                best_params = {"k": k_val, "home_adv": ha_val}
-                best_accuracy = acc
+            total += 1
+            if predicted == actual_winner:
+                correct += 1
+
+            p_clip = max(1e-10, min(1.0 - 1e-10, p_home))
+            log_loss_sum -= (
+                actual_outcome * math.log(p_clip)
+                + (1.0 - actual_outcome) * math.log(1.0 - p_clip)
+            )
+
+        if total == 0:
+            continue
+
+        ll = log_loss_sum / total
+        acc = correct / total
+
+        grid_results.append({
+            "K": k_val,
+            "Home Adv": ha_val,
+            "Log Loss": round(ll, 4),
+            "Accuracy": round(acc, 4),
+            "Games": total,
+        })
+
+        if ll < best_score:
+            best_score = ll
+            best_params = {"k": k_val, "home_adv": ha_val}
+            best_accuracy = acc
+
+    progress.empty()
+    status.empty()
 
     grid_results.sort(key=lambda x: x["Log Loss"])
 
