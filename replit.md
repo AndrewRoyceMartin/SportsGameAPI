@@ -86,6 +86,8 @@ SofaScore provides fixtures/results via sport-specific endpoints (basketball, ic
 - **Bet Quality scoring**: Composite 0-100 score from edge (35%), EV (25%), confidence (20%), odds sanity (20%)
 - **Quality tiers**: A (80+) = Strong, B (60-79) = Good, C (<60) = Fair/Weak
 - **Rating maturity penalty**: Quality score penalized for teams with few games (0.90x if <10, 0.95x if <20)
+- **Action tags**: BET (green, Tier A + Confidence >= 65% + Edge >= 3%), CONSIDER (amber, borderline A/B tier), PASS (grey) on hero card, pick cards, and Browse All table
+- **Column tooltips**: Hover help text on all key columns (Confidence, Edge, EV, Action, Quality, Tier) explaining what each metric means
 - **Risk tags**: Low (edge>=10%, mature), Medium (edge>=5% or developing), High (early/low edge)
 - **Sport filter**: Filter leagues by sport category (All, Basketball, Football, Hockey, MMA, Soccer)
 - **Run profiles**: Conservative (higher edge, tighter odds), Balanced (league defaults), Aggressive (lower edge, wider odds)

@@ -49,6 +49,7 @@ from ui_helpers import (
     render_shortlist_summary,
     render_quick_filters,
     render_au_season_banner,
+    inject_action_styles,
 )
 
 
@@ -190,6 +191,7 @@ hr {
 def main():
     st.set_page_config(page_title="Sports Predictor", page_icon="\u26bd", layout="wide")
     st.markdown(_CUSTOM_CSS, unsafe_allow_html=True)
+    inject_action_styles()
 
     st.title("\u26bd Sports Predictor")
     st.caption(
@@ -268,7 +270,7 @@ def main():
             "Confidence Target",
             options=conf_options,
             key="conf_target_sel",
-            help="Filter picks by minimum model probability. Higher = fewer but more confident picks.",
+            help="Filters picks by model win probability (Elo). Higher confidence reduces volume but tends to improve hit rate. Don't treat it as 'bet now' — use with Edge/EV.",
         )
         min_model_prob = {"Any": 0.0, "55%+": 0.55, "60%+": 0.60, "65%+": 0.65, "70%+": 0.70}.get(confidence_target, 0.0)
 

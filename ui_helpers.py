@@ -19,6 +19,55 @@ AU_LEAGUES = {"AFL", "NRL", "NBL"}
 AU_PRESEASON_MONTHS = {1, 2, 3}
 
 
+def action_tag(quality_tier: str, confidence: float, edge_pct: float) -> Tuple[str, str]:
+    conf = confidence * 100.0
+    if quality_tier == "A" and conf >= 65 and edge_pct >= 3:
+        return ("BET", "tag-bet")
+    if quality_tier in ("A", "B") and conf >= 60 and edge_pct >= 2:
+        return ("CONSIDER", "tag-consider")
+    return ("PASS", "tag-pass")
+
+
+def inject_action_styles():
+    st.markdown(
+        """
+        <style>
+        .tag-bet {
+            display: inline-block;
+            background: rgba(0, 200, 120, 0.14);
+            border: 1px solid rgba(0, 200, 120, 0.35);
+            color: rgb(0, 160, 96);
+            padding: 2px 10px;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 12px;
+        }
+        .tag-consider {
+            display: inline-block;
+            background: rgba(255, 180, 0, 0.14);
+            border: 1px solid rgba(255, 180, 0, 0.35);
+            color: rgb(200, 140, 0);
+            padding: 2px 10px;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 12px;
+        }
+        .tag-pass {
+            display: inline-block;
+            background: rgba(160, 160, 160, 0.14);
+            border: 1px solid rgba(160, 160, 160, 0.35);
+            color: rgb(130, 130, 130);
+            padding: 2px 10px;
+            border-radius: 999px;
+            font-weight: 700;
+            font-size: 12px;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True,
+    )
+
+
 def render_funnel_stepper(
     league_label: str,
     profile: str,
@@ -615,11 +664,21 @@ def render_hero_card(vb: Dict[str, Any], backtest_hint: Optional[str] = None) ->
     risk_color = risk_colors.get(risk, "gray")
     q = vb.get("quality", 0)
 
+    tier = quality_tier(q)
+    edge_pct = vb.get("edge", 0) * 100
+    confidence = vb.get("model_prob", 0)
+    act_label, act_css = action_tag(tier, confidence, edge_pct)
+
     with st.container(border=True):
-        top_l, top_r = st.columns([4, 1])
+        top_l, top_m, top_r = st.columns([3, 1, 1])
         with top_l:
             st.markdown("### \U0001f3af Best Bet Right Now")
             st.markdown(f"**{vb['home_team']}** vs **{vb['away_team']}**")
+        with top_m:
+            st.markdown(
+                f"<span class='{act_css}' title='Based on Tier {tier} + Confidence {confidence:.0%} + Edge {edge_pct:.1f}%'>{act_label}</span>",
+                unsafe_allow_html=True,
+            )
         with top_r:
             st.markdown(f":{risk_color}[**{risk} Risk**]")
 
@@ -804,8 +863,12 @@ def render_pick_cards(
         risk_colors = {"Low": "green", "Medium": "orange", "High": "red"}
         risk_color = risk_colors.get(risk, "gray")
 
+        edge_pct = vb.get("edge", 0) * 100
+        confidence = vb.get("model_prob", 0)
+        act_label, act_css = action_tag(tier, confidence, edge_pct)
+
         with st.container(border=True):
-            top_left, top_mid, top_right = st.columns([3, 1, 1])
+            top_left, top_mid, top_action, top_right = st.columns([3, 1, 1, 1])
             with top_left:
                 league_display = vb.get("league", league_label)
                 display_time = _format_au_time(vb['time'], league_display)
@@ -814,6 +877,11 @@ def render_pick_cards(
                 st.caption(f"{league_display} \u2022 {vb['date']} {display_time} \u2022 {maturity}")
             with top_mid:
                 st.markdown(f"Tier **{tier}** \u2022 {q_label}")
+            with top_action:
+                st.markdown(
+                    f"<span class='{act_css}' title='Based on Tier {tier} + Confidence {confidence:.0%} + Edge {edge_pct:.1f}%'>{act_label}</span>",
+                    unsafe_allow_html=True,
+                )
             with top_right:
                 st.markdown(f":{risk_color}[**{risk} Risk**]")
 
@@ -888,13 +956,13 @@ def show_results_explainer() -> None:
 
 
 AVAILABLE_COLUMNS = [
-    "Match", "Date", "Time", "Pick", "Odds", "Model %",
+    "Match", "Date", "Time", "Pick", "Action", "Odds", "Model %",
     "Implied %", "Edge", "EV/unit", "Quality", "Tier",
     "Elo H", "Elo A", "Confidence",
 ]
 
 DEFAULT_COLUMNS = [
-    "Match", "Date", "Pick", "Odds", "Edge", "EV/unit", "Quality", "Tier",
+    "Match", "Date", "Pick", "Action", "Odds", "Edge", "EV/unit", "Quality", "Tier",
 ]
 
 SORT_PRESETS = {
@@ -979,6 +1047,10 @@ def display_value_bets_table(
     df["Confidence"] = df["_conf"].apply(lambda x: f"{x:.0f}%")
     df["Quality"] = df["_quality"].apply(lambda x: f"{x}")
     df["Tier"] = df["_quality"].apply(lambda x: quality_tier(x))
+    df["Action"] = df.apply(
+        lambda r: action_tag(quality_tier(r["_quality"]), r["_model_p"], r["_edge"] * 100)[0],
+        axis=1,
+    )
 
     display_cols = [c for c in visible_cols if c in df.columns]
     if has_league_col and "League" not in display_cols:
@@ -986,7 +1058,48 @@ def display_value_bets_table(
     if not display_cols:
         display_cols = DEFAULT_COLUMNS
 
-    st.dataframe(df[display_cols], use_container_width=True, hide_index=True)
+    col_config = {
+        "Confidence": st.column_config.TextColumn(
+            "Confidence",
+            help="Model win probability (Elo). Not a bet signal by itself — use with Edge and EV.",
+        ),
+        "Model %": st.column_config.TextColumn(
+            "Model %",
+            help="Model win probability from Elo ratings, including home advantage.",
+        ),
+        "Implied %": st.column_config.TextColumn(
+            "Implied %",
+            help="Implied probability from odds (after converting decimal odds).",
+        ),
+        "Edge": st.column_config.TextColumn(
+            "Edge",
+            help="Model% minus Market%. Positive edge suggests value if pricing is correct.",
+        ),
+        "EV/unit": st.column_config.TextColumn(
+            "EV/unit",
+            help="Expected value per 1 unit staked (based on model prob vs odds).",
+        ),
+        "Action": st.column_config.TextColumn(
+            "Action",
+            help="BET = Tier A + Confidence >= 65% + Edge >= 3%. CONSIDER = borderline. PASS = low edge/confidence.",
+        ),
+        "Quality": st.column_config.TextColumn(
+            "Quality",
+            help="Composite score (0-100) from edge (35%), EV (25%), confidence (20%), odds sanity (20%).",
+        ),
+        "Tier": st.column_config.TextColumn(
+            "Tier",
+            help="A (80+) = Strong, B (60-79) = Good, C (<60) = Fair/Weak.",
+        ),
+    }
+
+    st.data_editor(
+        df[display_cols],
+        use_container_width=True,
+        hide_index=True,
+        disabled=True,
+        column_config=col_config,
+    )
     return experimental
 
 
