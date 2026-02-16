@@ -102,11 +102,17 @@ def fetch_elo_ratings(league_label: str, history_days: int) -> Tuple[dict, dict,
 
 
 def fetch_harvest_odds(harvest_key: str, lookahead_days: int, league_label: str = "") -> List[Dict[str, Any]]:
-    return fetch_odds_for_window(
+    _preflight_logger.info(
+        "[PIPE] fetch_harvest_odds: harvest_key=%s, lookahead=%d, league_label=%s",
+        harvest_key, lookahead_days, league_label,
+    )
+    result = fetch_odds_for_window(
         harvest_league=harvest_key,
         lookahead_days=lookahead_days,
         league_label=league_label or None,
     )
+    _preflight_logger.info("[PIPE] odds fetched = %d events", len(result))
+    return result
 
 
 def count_games_with_odds(harvest_games: List[Dict[str, Any]]) -> int:

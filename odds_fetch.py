@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 from typing import List, Dict, Any, Optional, Tuple
 
 from apify_runner import run_actor_get_items, ApifyAuthError, ApifyTransientError, ApifyError
@@ -11,6 +12,8 @@ logger = logging.getLogger(__name__)
 _last_fetch_errors: List[Tuple[str, str]] = []
 _last_fatal_error: Optional[str] = None
 _last_odds_source: Optional[str] = None
+_last_raw_count: int = 0
+_last_provider_detail: Optional[str] = None
 
 SPORTSBET_ACTOR_ID = "lexis-solutions~sportsbet-com-au-scraper"
 
@@ -28,24 +31,27 @@ def _build_sportsbet_input(league: str) -> Dict[str, Any]:
 
 
 def _run_apify(actor_id: str, actor_input: Dict[str, Any], timeout: int) -> Optional[List[Dict[str, Any]]]:
-    global _last_fetch_errors, _last_fatal_error
+    global _last_fetch_errors, _last_fatal_error, _last_raw_count
     try:
         return run_actor_get_items(actor_id, actor_input, timeout=timeout)
     except ApifyTransientError as exc:
         reason = str(exc)
         logger.warning("Odds fetch transient error: %s", reason)
         _last_fetch_errors.append(("apify", reason))
+        _last_raw_count = -1
         return None
     except (ApifyAuthError, ApifyError) as exc:
         reason = str(exc)
         logger.error("Odds fetch fatal error: %s", reason)
         _last_fetch_errors.append(("apify", reason))
         _last_fatal_error = reason
+        _last_raw_count = -1
         return None
     except Exception as exc:
         reason = str(exc)
         logger.warning("Odds fetch unexpected error: %s", reason)
         _last_fetch_errors.append(("apify", reason))
+        _last_raw_count = -1
         return None
 
 
@@ -57,26 +63,45 @@ def fetch_odds_for_window(
     timeout: int = 120,
     league_label: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    global _last_fetch_errors, _last_fatal_error, _last_odds_source
+    global _last_fetch_errors, _last_fatal_error, _last_odds_source, _last_raw_count, _last_provider_detail
     _last_fetch_errors = []
     _last_fatal_error = None
     _last_odds_source = None
+    _last_raw_count = 0
+    _last_provider_detail = None
 
     effective_league = league_label or harvest_league
+    has_token = bool(os.getenv("APIFY_TOKEN"))
+
+    logger.info("[ODDS] harvest_key=%s, effective_league=%s, token_present=%s",
+                harvest_league, effective_league, has_token)
 
     if is_sportsbet_league(effective_league):
         _last_odds_source = "Sportsbet (AU)"
+        _last_provider_detail = f"actor={SPORTSBET_ACTOR_ID}, league={effective_league}"
+        logger.info("[ODDS] Routing to Sportsbet for %s", effective_league)
         sb_input = _build_sportsbet_input(effective_league)
         items = _run_apify(SPORTSBET_ACTOR_ID, sb_input, timeout)
         if items is None:
+            logger.warning("[ODDS] Sportsbet fetch returned None (error)")
             return []
-        return parse_sportsbet_items(items, effective_league)
+        _last_raw_count = len(items)
+        logger.info("[ODDS] Sportsbet raw items=%d", len(items))
+        parsed = parse_sportsbet_items(items, effective_league)
+        logger.info("[ODDS] Sportsbet parsed events=%d", len(parsed))
+        return parsed
 
     _last_odds_source = "Harvest"
+    _last_provider_detail = f"actor={actor_id}, input={{league: {harvest_league}}}"
+    logger.info("[ODDS] Routing to Harvest for %s (key=%s)", effective_league, harvest_league)
     actor_input = _build_harvest_input(harvest_league, sportsbook)
     items = _run_apify(actor_id, actor_input, timeout)
     if items is None:
+        logger.warning("[ODDS] Harvest fetch returned None (error)")
         return []
+
+    _last_raw_count = len(items)
+    logger.info("[ODDS] Harvest raw items=%d", len(items))
 
     all_items: List[Dict[str, Any]] = []
     seen: set = set()
@@ -90,6 +115,8 @@ def fetch_odds_for_window(
         seen.add(key)
         all_items.append(g)
 
+    logger.info("[ODDS] After dedup: %d events (removed %d dupes)",
+                len(all_items), len(items) - len(all_items))
     return all_items
 
 
@@ -103,3 +130,11 @@ def get_fatal_error() -> Optional[str]:
 
 def get_odds_source() -> Optional[str]:
     return _last_odds_source
+
+
+def get_raw_count() -> int:
+    return _last_raw_count
+
+
+def get_provider_detail() -> Optional[str]:
+    return _last_provider_detail

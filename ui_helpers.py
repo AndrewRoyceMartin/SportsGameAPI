@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import csv
 import io
+import os
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
@@ -9,7 +10,7 @@ import streamlit as st
 import pandas as pd
 
 from odds_extract import extract_moneylines, consensus_decimal
-from odds_fetch import get_fetch_errors, get_fatal_error, get_odds_source
+from odds_fetch import get_fetch_errors, get_fatal_error, get_odds_source, get_raw_count, get_provider_detail
 from stats_provider import get_fetch_failure_count, get_http_429_count, get_http_5xx_count, get_http_404_count, get_last_status_code
 from features import elo_win_prob
 from league_map import is_two_outcome
@@ -346,8 +347,30 @@ def show_diagnostics(
         "**Value bets** = picks that passed filters."
     )
     odds_source = get_odds_source()
+    raw_count = get_raw_count()
+    provider_detail = get_provider_detail()
+    has_token = bool(os.getenv("APIFY_TOKEN"))
+
     if odds_source:
-        st.caption(f"Odds source: **{odds_source}**")
+        source_parts = [f"Odds source: **{odds_source}**"]
+        source_parts.append(f"API key: {'present' if has_token else 'MISSING'}")
+        source_parts.append(f"Raw items from actor: **{raw_count}**")
+        if provider_detail:
+            source_parts.append(f"Detail: `{provider_detail}`")
+        st.caption(" \u2022 ".join(source_parts))
+
+    if odds_fetched == 0 and raw_count == 0 and not get_fatal_error() and not get_fetch_errors():
+        st.warning(
+            "The odds actor ran successfully but returned **0 items**. "
+            "This usually means the external scraper is not finding data for this league right now. "
+            "The issue is with the odds provider, not with this app's configuration."
+        )
+    elif odds_fetched == 0 and raw_count < 0:
+        st.error(
+            "The odds fetch encountered an error before returning any data. "
+            "Check the error details below for more information."
+        )
+
     fatal = get_fatal_error()
     fetch_errors = get_fetch_errors()
     if fatal:
@@ -456,11 +479,40 @@ def explain_empty_run(
     unmatched_odds: Optional[List[Dict[str, Any]]] = None,
 ) -> None:
     if odds_fetched == 0:
-        st.info(
-            f"No odds data available for **{league_label}** right now. "
-            "The sportsbooks may not have posted lines yet."
-        )
+        odds_source = get_odds_source() or "Unknown"
+        provider_detail = get_provider_detail() or ""
+        raw_count = get_raw_count()
+        has_token = bool(os.getenv("APIFY_TOKEN"))
+        fatal = get_fatal_error()
+        fetch_errs = get_fetch_errors()
+
+        if fatal:
+            st.error(
+                f"Odds fetch **failed** for **{league_label}**.\n\n"
+                f"Provider: {odds_source} \u2022 API key: {'present' if has_token else 'MISSING'}\n\n"
+                f"Error: `{fatal[:200]}`"
+            )
+        elif fetch_errs:
+            err_msgs = "; ".join(r[:100] for _, r in fetch_errs[:3])
+            st.warning(
+                f"Odds fetch returned errors for **{league_label}**.\n\n"
+                f"Provider: {odds_source} \u2022 API key: {'present' if has_token else 'MISSING'} \u2022 "
+                f"Raw items: {raw_count}\n\n"
+                f"Errors: `{err_msgs}`"
+            )
+        elif raw_count == 0:
+            st.info(
+                f"No odds data for **{league_label}** \u2014 the odds provider returned an empty dataset.\n\n"
+                f"Provider: **{odds_source}** \u2022 API key: {'present' if has_token else 'MISSING'} \u2022 "
+                f"Raw items: **0** \u2022 After filtering: **0**"
+            )
+        else:
+            st.info(
+                f"Odds fetched ({raw_count} raw items) but all filtered out for **{league_label}**.\n\n"
+                f"Provider: **{odds_source}** \u2022 Raw: {raw_count} \u2022 After parsing: 0"
+            )
         st.markdown("**What to try:**")
+        st.markdown("- Check the Fix Issues tab for detailed provider diagnostics")
         st.markdown("- Come back closer to game time when lines are posted")
         st.markdown("- Try a different league that has active games today")
     elif odds_with_lines is not None and odds_with_lines == 0:
