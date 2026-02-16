@@ -93,7 +93,7 @@ SofaScore provides fixtures/results via sport-specific endpoints (basketball, ic
 - **Column toggles**: Show/hide columns including Quality and Tier columns
 - **AU timezone display**: AFL/NRL/NBL games show local AEDT time with UTC secondary
 - **Backtest suggested settings**: "Use backtest-optimised settings" button auto-applies confidence thresholds based on model accuracy
-- **Modern dark theme**: Inter font, purple-cyan gradient headers, rounded cards/buttons/tabs, purple accent system
+- **Clean light theme**: Light grey-blue background (#F6F8FC), white cards with subtle shadows, blue primary buttons (#2563EB), rounded 16px panels, soft blue pill/chip tints
 
 ## Production Safety
 - 2-outcome leagues (NBA, NFL, NHL, AFL, NRL, NBL, College FB/BB): full pipeline, normal save

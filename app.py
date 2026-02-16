@@ -54,164 +54,134 @@ from ui_helpers import (
 
 _CUSTOM_CSS = """
 <style>
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap');
+/* --- Global spacing tweaks --- */
+.block-container { padding-top: 1.2rem; padding-bottom: 2rem; }
 
-html, body, [class*="css"] {
-    font-family: 'Inter', sans-serif;
-}
-
-/* ── Header ────────────────────────────────── */
-h1 {
-    background: linear-gradient(135deg, #6C63FF 0%, #48C6EF 100%);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
-    font-weight: 700;
-    letter-spacing: -0.5px;
-}
-h2, h3 {
-    font-weight: 600;
-    letter-spacing: -0.3px;
+/* --- Card / panel feel --- */
+div[data-testid="stMetric"],
+div[data-testid="stDataFrame"],
+div[data-testid="stVerticalBlockBorderWrapper"],
+div[data-testid="stExpander"],
+div[data-testid="stForm"] {
+  background: #FFFFFF;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
 }
 
-/* ── Sidebar ───────────────────────────────── */
-section[data-testid="stSidebar"] {
-    background: linear-gradient(180deg, #12141D 0%, #1A1D29 100%);
-    border-right: 1px solid rgba(108,99,255,0.15);
-}
-section[data-testid="stSidebar"] h1,
-section[data-testid="stSidebar"] h2 {
-    background: none;
-    -webkit-text-fill-color: #FAFAFA;
+/* Reduce "double borders" on nested blocks */
+div[data-testid="stVerticalBlockBorderWrapper"] > div {
+  border-radius: 16px;
 }
 
-/* ── Cards / containers ────────────────────── */
-div[data-testid="stVerticalBlockBorderWrapper"] > div[data-testid="stVerticalBlock"] {
-    border-radius: 12px;
-}
-[data-testid="stExpander"] {
-    border-radius: 10px;
-    border: 1px solid rgba(108,99,255,0.12);
-}
-
-/* ── Metrics ───────────────────────────────── */
-[data-testid="stMetric"] {
-    background: rgba(108,99,255,0.06);
-    border: 1px solid rgba(108,99,255,0.12);
-    border-radius: 10px;
-    padding: 12px 16px;
-}
-[data-testid="stMetricLabel"] {
-    font-size: 0.75rem;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    opacity: 0.7;
-}
-[data-testid="stMetricValue"] {
-    font-weight: 700;
-    font-size: 1.3rem;
-}
-
-/* ── Buttons ───────────────────────────────── */
+/* --- Buttons --- */
 .stButton > button {
-    border-radius: 8px;
-    font-weight: 600;
-    letter-spacing: 0.3px;
-    transition: all 0.2s ease;
-    border: 1px solid rgba(108,99,255,0.3);
+  border-radius: 12px !important;
+  padding: 0.55rem 0.95rem !important;
+  border: 1px solid rgba(37, 99, 235, 0.25) !important;
+  background: linear-gradient(180deg, rgba(37,99,235,0.95), rgba(37,99,235,0.85)) !important;
+  color: #FFFFFF !important;
+  font-weight: 650 !important;
+  transition: all 0.2s ease;
 }
 .stButton > button:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 4px 16px rgba(108,99,255,0.25);
-    border-color: #6C63FF;
-}
-.stButton > button[kind="primary"],
-.stButton > button[data-testid="stBaseButton-primary"] {
-    background: linear-gradient(135deg, #6C63FF 0%, #48C6EF 100%);
-    color: white;
-    border: none;
+  filter: brightness(1.03);
+  transform: translateY(-1px);
 }
 
-/* ── Tabs ──────────────────────────────────── */
+/* --- Tags / pills (Streamlit chips) --- */
+span[data-baseweb="tag"]{
+  border-radius: 999px !important;
+  border: 1px solid rgba(15,23,42,0.12) !important;
+  background: rgba(37,99,235,0.08) !important;
+}
+
+/* --- Sidebar polish --- */
+section[data-testid="stSidebar"] {
+  background: #FFFFFF;
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
+}
+
+/* --- Tabs --- */
 .stTabs [data-baseweb="tab-list"] {
-    gap: 4px;
-    background: rgba(26,29,41,0.6);
-    border-radius: 10px;
-    padding: 4px;
+  gap: 4px;
+  border-radius: 10px;
+  padding: 4px;
 }
 .stTabs [data-baseweb="tab"] {
-    border-radius: 8px;
-    font-weight: 500;
-    padding: 8px 20px;
-    transition: all 0.2s ease;
-}
-.stTabs [aria-selected="true"] {
-    background: rgba(108,99,255,0.15);
-    border-bottom: 2px solid #6C63FF;
+  border-radius: 8px;
+  font-weight: 500;
+  padding: 8px 20px;
+  transition: all 0.2s ease;
 }
 
-/* ── Select / input ────────────────────────── */
+/* --- Metrics --- */
+[data-testid="stMetricLabel"] {
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.7;
+}
+[data-testid="stMetricValue"] {
+  font-weight: 700;
+  font-size: 1.3rem;
+}
+
+/* --- Inputs --- */
 .stSelectbox [data-baseweb="select"] > div,
 .stTextInput > div > div > input,
 .stNumberInput > div > div > input {
-    border-radius: 8px;
-    border: 1px solid rgba(108,99,255,0.15);
-    transition: border-color 0.2s ease;
+  border-radius: 8px;
+  transition: border-color 0.2s ease;
 }
 .stSelectbox [data-baseweb="select"] > div:focus-within,
 .stTextInput > div > div > input:focus,
 .stNumberInput > div > div > input:focus {
-    border-color: #6C63FF;
-    box-shadow: 0 0 0 2px rgba(108,99,255,0.15);
+  border-color: #2563EB;
+  box-shadow: 0 0 0 2px rgba(37,99,235,0.15);
 }
 
-/* ── Toggle ────────────────────────────────── */
+/* --- Toggle --- */
 [data-testid="stToggle"] span[data-baseweb="toggle"] {
-    border-radius: 20px;
+  border-radius: 20px;
 }
 
-/* ── Dataframe ─────────────────────────────── */
-[data-testid="stDataFrame"] {
-    border-radius: 10px;
-    overflow: hidden;
-    border: 1px solid rgba(108,99,255,0.1);
-}
-
-/* ── Divider ───────────────────────────────── */
+/* --- Divider --- */
 hr {
-    border-color: rgba(108,99,255,0.1);
+  border-color: rgba(15,23,42,0.08);
 }
 
-/* ── Download button ───────────────────────── */
+/* --- Download button --- */
 .stDownloadButton > button {
-    border-radius: 8px;
-    font-weight: 600;
+  border-radius: 12px;
+  font-weight: 600;
 }
 
-/* ── Alert boxes ───────────────────────────── */
+/* --- Alert boxes --- */
 .stAlert {
-    border-radius: 10px;
+  border-radius: 10px;
 }
 
-/* ── Progress bar ──────────────────────────── */
+/* --- Progress bar --- */
 .stProgress > div > div {
-    background: linear-gradient(90deg, #6C63FF, #48C6EF);
-    border-radius: 8px;
+  background: linear-gradient(90deg, #2563EB, #60A5FA);
+  border-radius: 8px;
 }
 
-/* ── Scrollbar ─────────────────────────────── */
+/* --- Scrollbar --- */
 ::-webkit-scrollbar {
-    width: 6px;
-    height: 6px;
+  width: 6px;
+  height: 6px;
 }
 ::-webkit-scrollbar-track {
-    background: transparent;
+  background: transparent;
 }
 ::-webkit-scrollbar-thumb {
-    background: rgba(108,99,255,0.3);
-    border-radius: 3px;
+  background: rgba(37,99,235,0.25);
+  border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-    background: rgba(108,99,255,0.5);
+  background: rgba(37,99,235,0.4);
 }
 </style>
 """

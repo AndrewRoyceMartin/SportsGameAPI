@@ -1,0 +1,111 @@
+Replit steps (Option A: “Coinbase / Stripe Trading Light”)
+1) Create the Streamlit theme file
+
+In Replit, open the file tree and create this folder + file:
+
+.streamlit/
+
+.streamlit/config.toml
+
+Paste this into .streamlit/config.toml:
+
+[theme]
+base="light"
+font="sans serif"
+
+primaryColor="#2563EB"
+backgroundColor="#F6F8FC"
+secondaryBackgroundColor="#FFFFFF"
+textColor="#0F172A"
+
+
+If .streamlit doesn’t exist, you must create the folder first.
+
+2) Add the UI polish CSS in app.py
+
+Open app.py and place this near the top, right after:
+
+import streamlit as st
+
+
+Paste:
+
+st.markdown("""
+<style>
+/* --- Global spacing tweaks --- */
+.block-container { padding-top: 1.2rem; padding-bottom: 2rem; }
+
+/* --- Card / panel feel --- */
+div[data-testid="stMetric"],
+div[data-testid="stDataFrame"],
+div[data-testid="stVerticalBlockBorderWrapper"],
+div[data-testid="stExpander"],
+div[data-testid="stForm"] {
+  background: #FFFFFF;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 16px;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+}
+
+/* Reduce “double borders” on nested blocks */
+div[data-testid="stVerticalBlockBorderWrapper"] > div {
+  border-radius: 16px;
+}
+
+/* --- Buttons --- */
+.stButton > button {
+  border-radius: 12px !important;
+  padding: 0.55rem 0.95rem !important;
+  border: 1px solid rgba(37, 99, 235, 0.25) !important;
+  background: linear-gradient(180deg, rgba(37,99,235,0.95), rgba(37,99,235,0.85)) !important;
+  color: #FFFFFF !important;
+  font-weight: 650 !important;
+}
+.stButton > button:hover {
+  filter: brightness(1.03);
+  transform: translateY(-1px);
+}
+
+/* --- Tags / pills (Streamlit chips) --- */
+span[data-baseweb="tag"]{
+  border-radius: 999px !important;
+  border: 1px solid rgba(15,23,42,0.12) !important;
+  background: rgba(37,99,235,0.08) !important;
+}
+
+/* --- Sidebar polish --- */
+section[data-testid="stSidebar"] {
+  background: #FFFFFF;
+  border-right: 1px solid rgba(15, 23, 42, 0.08);
+}
+</style>
+""", unsafe_allow_html=True)
+
+3) Restart the app in Replit
+
+Click Stop (if running)
+
+Click Run again
+
+If Replit is using a “webview” and knows Streamlit, it should refresh with the new theme.
+
+4) If the theme doesn’t apply (common Replit gotcha)
+
+Make sure Streamlit is being launched from the project root (where .streamlit/ sits). Typical run commands are:
+
+streamlit run app.py --server.address 0.0.0.0 --server.port 3000
+
+
+If your Replit “Run” button is configured elsewhere, update the run command to the above.
+
+Quick verification
+
+When it’s working you should see:
+
+light grey-blue app background
+
+white cards/panels
+
+blue primary buttons
+
+pills/chips with a soft blue tint
