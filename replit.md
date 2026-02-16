@@ -70,29 +70,30 @@ SofaScore provides fixtures/results via sport-specific endpoints (basketball, ic
 15. 3-outcome leagues: dedup best side per match, require explicit save opt-in, tag as experimental
 
 ## UI Features
-- **5-tab layout**: Place Bets (card-based shortlist + bet slip), Browse All (sortable table), Trust & Tuning (backtesting), Fix Issues (diagnostics), Track Results (saved picks)
-- **Best Bet Right Now**: Hero card at top of Place Bets tab highlighting the #1 pick with risk tag (Low/Medium/High)
-- **Action strip**: Context-aware "What should I do next?" message after every pipeline run
+- **5-tab layout**: Place Bets (card-based shortlist + bet builder), Browse All (discovery table), Trust & Tuning (backtesting), Fix Issues (diagnostics), Track Results (feedback loop)
+- **3-step funnel stepper**: Top of Place Bets shows Scan → Risk → Review workflow with current rules pills (edge %, odds range, lookahead, confidence)
+- **Best Bet Right Now**: Hero card with "Why this is #1" one-liner, quarter-Kelly stake suggestion, risk tag, confidence calibration hint
+- **Quick Filters**: Above cards — Starts in (6h/24h/3d/All), Tier (A/B/C), Risk (Low/Medium/High) for browsing picks
+- **Shortlist summary**: Portfolio view when Best Bets Mode ON — picks count, avg edge, avg confidence, avg quality, earliest start, estimated outlay
+- **Bet Builder**: Right column layout with A-tier count, all picks list, stake input, total outlay, Copy as Text, CSV export with Quality/Tier columns
+- **Pick card hierarchy**: Top row = team/time/badges/risk, Middle row = Model%/Market%/Edge/Odds (big metrics), Bottom = collapsed Details expander (quality breakdown, Elo, games, why explainer, quarter-Kelly stake)
+- **Action strip with buttons**: Actionable session_state mutations — "Lower edge to X%", "Widen odds range", "Extend lookahead to 21 days", "Switch to Aggressive"
+- **Browse All discovery**: Edge slider (without changing defaults), near-misses toggle (show bets 1-2% below threshold), recomputes values at lower thresholds
+- **Track Results feedback loop**: Won/Lost/Void buttons on each pending pick, rolling stats panel (Record W-L-V, Hit Rate, ROI, Total P/L), hit rate by quality tier, hit rate by confidence bucket
+- **AU season banner**: Preseason warning for AFL/NRL/NBL during Jan-Mar months
 - **Confidence Target**: First-class sidebar control (Any/55%+/60%+/65%+/70%+) filtering by minimum model probability
-- **Bet Slip**: Container with selected picks, configurable stake, total outlay, Copy as Text, and CSV export
-- **Quality breakdown mini-bar**: Visual breakdown on each pick card showing Edge/EV/Confidence/Odds contribution scores
-- **Confidence vs Implied line**: Model% vs Market% vs Edge summary on each pick card
 - **Best Bets Mode**: Toggle (default ON) that auto-sorts by quality, limits to top 10, locks defaults
 - **Bet Quality scoring**: Composite 0-100 score from edge (35%), EV (25%), confidence (20%), odds sanity (20%)
 - **Quality tiers**: A (80+) = Strong, B (60-79) = Good, C (<60) = Fair/Weak
 - **Rating maturity penalty**: Quality score penalized for teams with few games (0.90x if <10, 0.95x if <20)
 - **Risk tags**: Low (edge>=10%, mature), Medium (edge>=5% or developing), High (early/low edge)
-- **Card-based picks**: Match details, quality badge, maturity badge (Mature/Developing/Early), "Why" explainer text, games played counts per pick
-- **Simplified sidebar**: Basic controls always visible (sport, league, profile, Best Bets Mode, Confidence Target) + Advanced expander
 - **Sport filter**: Filter leagues by sport category (All, Basketball, Football, Hockey, MMA, Soccer)
-- **Search**: Live text filtering of league names
 - **Run profiles**: Conservative (higher edge, tighter odds), Balanced (league defaults), Aggressive (lower edge, wider odds)
 - **Sorting presets**: Sort by Best Quality, Best EV, Highest Edge, Soonest Start, Best Confidence
 - **Column toggles**: Show/hide columns including Quality and Tier columns
-- **Actionable empty states**: Specific guidance with "What to try" suggestions at each pipeline stage
-- **Smart diagnostics**: Distinguishes naming mismatches from coverage gaps with targeted guidance
 - **AU timezone display**: AFL/NRL/NBL games show local AEDT time with UTC secondary
 - **Backtest suggested settings**: "Use backtest-optimised settings" button auto-applies confidence thresholds based on model accuracy
+- **Modern dark theme**: Inter font, purple-cyan gradient headers, rounded cards/buttons/tabs, purple accent system
 
 ## Production Safety
 - 2-outcome leagues (NBA, NFL, NHL, AFL, NRL, NBL, College FB/BB): full pipeline, normal save
@@ -113,11 +114,11 @@ SofaScore provides fixtures/results via sport-specific endpoints (basketball, ic
 - **Baseline comparisons**: Naive Elo (K=20, HomeAdv=65, Scale=400, no MOV/recency), always-pick-home, coin-flip Brier
 
 ## UI Tabs
-1. **Place Bets** - Hero card + card-based shortlist of top value bets with quality badges, bet slip, and save controls
-2. **Browse All** - Full sortable table with all value bets, column toggles, sort presets
+1. **Place Bets** - Hero card + card-based shortlist of top value bets with quality badges, bet builder, and save controls
+2. **Browse All** - Full sortable table with all value bets, column toggles, sort presets, near-miss toggle, edge slider
 3. **Trust & Tuning** - Test Elo model against historical results with accuracy, Brier score, log loss, bucket lift metrics + apply optimised settings
 4. **Fix Issues** - Pipeline stats, unmatched samples, odds source info, error details
-5. **Track Results** - History of saved picks with P/L tracking
+5. **Track Results** - Won/Lost/Void outcome tracking, rolling stats (ROI, hit rate by tier/confidence), P/L history
 
 ## Running
 ```

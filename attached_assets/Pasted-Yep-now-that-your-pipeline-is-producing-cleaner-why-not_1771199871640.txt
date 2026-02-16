@@ -1,0 +1,197 @@
+Yep — now that your pipeline is producing cleaner “why nothing matched / why nothing passed filters” signals, the GUI can do a lot more guiding instead of just displaying.
+
+Below are the highest-impact UI upgrades (Streamlit-friendly) to make the app feel like a “betting assistant” rather than a dashboard.
+
+1) Make the workflow explicit: 3-step “funnel” at the top
+
+On Place Bets, add a simple Stepper-style header:
+
+Choose scan (League / All)
+
+Set risk (Conservative/Balanced/Aggressive + Confidence Target)
+
+Review picks (Best Bet → shortlist → bet slip)
+
+Why it helps: you stop hunting around the sidebar and tabs.
+
+Implementation idea (app.py):
+
+Put a st.container() at the top of Place Bets with:
+
+A one-line summary of current scan scope
+
+A “Run scan” button (primary)
+
+A compact “current rules” pill row (edge %, min odds, confidence target, lookahead)
+
+2) Convert your “Best Bet Right Now” into a proper decision card
+
+Your hero card is great — make it actionable:
+
+Add:
+
+Stake suggestion mode: Flat stake / Kelly-lite / Custom
+
+Confidence calibration hint: show “Backtest says: at 65%+ you historically hit X%” (even if it’s only from last run)
+
+Why this is #1: one short sentence using your quality components
+
+Example: “Edge +8.2% with mature ratings and sane odds.”
+
+This turns it into “do I place this bet?” not “here’s a pick”.
+
+3) Add a “Bet Builder” rail on the right (sticky-style)
+
+Instead of the bet slip living below everything, make it a right column.
+
+Layout on Place Bets:
+
+Left (wide): cards
+
+Right (narrow): Bet Builder
+
+Stake per bet
+
+Max total outlay cap
+
+“Add all A-tier” button
+
+“Add top 3” button
+
+Copy/CSV
+
+Streamlit pattern:
+
+left, right = st.columns([3, 1])
+with right:
+    render_bet_slip(...)
+
+4) Make each pick card answer the 3 questions instantly
+
+Every pick should visually answer:
+
+What’s the bet? (team, market, odds)
+
+Why is it value? (Model% vs Market% vs Edge)
+
+How risky is it? (risk tag + maturity + start time)
+
+You already have most of this. The UI tweak is hierarchy:
+
+Card top row:
+
+Team vs Team
+
+Start time (local for AU, local to league otherwise)
+
+Quality badge + Risk tag
+
+Card middle row:
+
+Model% | Market% | Edge (big + bold)
+
+Odds + implied probability
+
+Card bottom row (collapsed by default):
+
+Mini quality breakdown bar
+
+“How calculated” expander (EV formula + consensus)
+
+5) Add “Quick Filters” chips above the cards (not in sidebar)
+
+Sidebar is for configuration. Place Bets should have moment-to-moment filters:
+
+Starts in: Next 6h / 24h / 3d / All
+
+Tier: A / B / C
+
+Risk: Low / Med / High
+
+Market sanity: Hide weird odds
+
+These should feel like “shopping filters” while browsing picks.
+
+6) Turn your Action Strip into a guided next action (with buttons)
+
+Right now it’s messaging. Make it do something.
+
+Examples:
+
+If matched == 0 and reason is naming → show button: Open Fix Issues tab
+
+If value bets == 0 → show:
+
+Lower min edge to X (button that sets session state)
+
+Widen odds range (button)
+
+If “coverage gap” → show:
+
+Extend lookahead to 21 days (button)
+
+Streamlit lets you set st.session_state[...] directly when clicking.
+
+7) Add a “Best Bets Shortlist” mode that feels like a final recommendation
+
+When Best Bets Mode is ON, explicitly label it:
+
+“Shortlist (recommended)” with a count like “Top 10 picks”
+
+Display a “Portfolio view” summary above the cards:
+
+Total outlay (if slip populated)
+
+Avg edge
+
+Avg confidence
+
+Earliest start
+
+This makes it feel like curated output.
+
+8) Improve “Browse All” to be a discovery tool, not a duplicate view
+
+Browse All should answer: “What else exists if I relax my rules?”
+
+Add:
+
+A small toggle: Show near-misses (e.g., edge within 1–2% of threshold)
+
+Column: Fail reason (too low edge / odds out of range / low confidence)
+
+A slider: “Show bets down to edge = X%” without changing saved defaults
+
+This makes Browse All useful for tuning without breaking your main run.
+
+9) Track Results tab: make it “feedback loop” for model trust
+
+To improve usability and future accuracy work:
+
+Add “Mark outcome” buttons (Won/Lost/Void) beside saved picks
+
+Show rolling stats:
+
+ROI
+
+Hit rate by confidence bucket
+
+Hit rate by tier (A/B/C)
+
+Show “Model vs Market” calibration plot later (optional)
+
+Even a simple table + summary metrics will make this feel like a system you can learn from.
+
+10) AU leagues specifically: reduce confusion with “season state” labels
+
+For AFL/NRL in preseason/early season:
+
+Add a banner above results:
+
+“AFL currently includes preseason games (experimental mapping)”
+
+Add a small tag on those fixtures: Preseason
+
+Default to a longer lookahead for AFL automatically (you already do 21 days, keep it visible)
+
+This will stop the “why no fixtures / why unmatched” spiral for AU sports.

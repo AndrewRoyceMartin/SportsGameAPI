@@ -16,6 +16,149 @@ from league_map import is_two_outcome
 from mapper import _name_score, _parse_iso
 
 AU_LEAGUES = {"AFL", "NRL", "NBL"}
+AU_PRESEASON_MONTHS = {1, 2, 3}
+
+
+def render_funnel_stepper(
+    league_label: str,
+    profile: str,
+    min_edge: float,
+    odds_range: tuple,
+    confidence_target: str,
+    lookahead_days: int,
+    best_bets_mode: bool,
+    run_all: bool = False,
+) -> None:
+    scope = "All leagues" if run_all else league_label
+    mode = "Best Bets" if best_bets_mode else "Full Scan"
+
+    with st.container(border=True):
+        s1, s2, s3 = st.columns(3)
+        with s1:
+            st.markdown(f"**1. Scan** &nbsp; `{scope}`")
+        with s2:
+            st.markdown(f"**2. Risk** &nbsp; `{profile}` / `{confidence_target}`")
+        with s3:
+            st.markdown(f"**3. Review** &nbsp; `{mode}`")
+
+        pills = (
+            f"Edge {min_edge*100:.0f}%+ &nbsp;|&nbsp; "
+            f"Odds {odds_range[0]:.2f}\u2013{odds_range[1]:.2f} &nbsp;|&nbsp; "
+            f"Lookahead {lookahead_days}d &nbsp;|&nbsp; "
+            f"Confidence {confidence_target}"
+        )
+        st.caption(pills)
+
+
+def render_au_season_banner(league_label: str) -> None:
+    if league_label not in AU_LEAGUES:
+        return
+    now_month = datetime.now(timezone.utc).month
+    if now_month in AU_PRESEASON_MONTHS:
+        st.info(
+            f"{league_label} currently includes preseason games (experimental mapping). "
+            "Results may be less reliable early in the season."
+        )
+
+
+def render_shortlist_summary(value_bets: List[Dict[str, Any]], stake: int = 10) -> None:
+    if not value_bets:
+        return
+    avg_edge = sum(vb["edge"] for vb in value_bets) / len(value_bets)
+    avg_conf = sum(vb.get("model_prob", 0) for vb in value_bets) / len(value_bets)
+    avg_quality = sum(vb.get("quality", 0) for vb in value_bets) / len(value_bets)
+    times = []
+    for vb in value_bets:
+        try:
+            d = vb.get("date", "")
+            t = vb.get("time", "").replace(" UTC", "").strip()
+            times.append(f"{d} {t}")
+        except Exception:
+            pass
+    earliest = min(times) if times else "?"
+    total_outlay = stake * len(value_bets)
+
+    with st.container(border=True):
+        st.markdown(f"### Shortlist ({len(value_bets)} picks)")
+        p1, p2, p3, p4, p5 = st.columns(5)
+        p1.metric("Picks", len(value_bets))
+        p2.metric("Avg Edge", f"{avg_edge:.1%}")
+        p3.metric("Avg Confidence", f"{avg_conf:.0%}")
+        p4.metric("Avg Quality", f"{avg_quality:.0f}/100")
+        p5.metric("Earliest", earliest[:10] if len(earliest) > 10 else earliest)
+        st.caption(f"Est. outlay at ${stake}/bet: **${total_outlay}**")
+
+
+def render_quick_filters(value_bets: List[Dict[str, Any]], key_prefix: str = "qf") -> List[Dict[str, Any]]:
+    if not value_bets:
+        return value_bets
+
+    fc1, fc2, fc3 = st.columns(3)
+    with fc1:
+        time_filter = st.selectbox(
+            "Starts in",
+            ["All", "Next 6h", "Next 24h", "Next 3d"],
+            key=f"{key_prefix}_time",
+        )
+    with fc2:
+        tier_filter = st.selectbox(
+            "Tier",
+            ["All", "A only", "A + B", "C only"],
+            key=f"{key_prefix}_tier",
+        )
+    with fc3:
+        risk_filter = st.selectbox(
+            "Risk",
+            ["All", "Low", "Medium", "High"],
+            key=f"{key_prefix}_risk",
+        )
+
+    filtered = value_bets
+
+    if time_filter != "All":
+        now = datetime.now(timezone.utc)
+        hours_map = {"Next 6h": 6, "Next 24h": 24, "Next 3d": 72}
+        max_hours = hours_map.get(time_filter, 9999)
+        cutoff = now + timedelta(hours=max_hours)
+        kept = []
+        for vb in filtered:
+            try:
+                dt = None
+                raw_iso = vb.get("start_time_utc") or vb.get("iso_time")
+                if raw_iso:
+                    dt = _parse_iso(raw_iso)
+                else:
+                    d = vb.get("date", "")
+                    t = vb.get("time", "00:00").replace(" UTC", "").replace(" AEDT", "").strip()
+                    for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d %H:%M:%S"):
+                        try:
+                            dt = datetime.strptime(f"{d} {t}", fmt).replace(tzinfo=timezone.utc)
+                            break
+                        except ValueError:
+                            continue
+                if dt and dt <= cutoff:
+                    kept.append(vb)
+                elif dt is None:
+                    kept.append(vb)
+            except Exception:
+                kept.append(vb)
+        filtered = kept
+
+    if tier_filter != "All":
+        tier_map = {"A only": {"A"}, "A + B": {"A", "B"}, "C only": {"C"}}
+        allowed = tier_map.get(tier_filter, set())
+        filtered = [vb for vb in filtered if quality_tier(vb.get("quality", 0)) in allowed]
+
+    if risk_filter != "All":
+        filtered = [
+            vb for vb in filtered
+            if _risk_tag(vb.get("edge", 0), vb.get("min_games", 0)) == risk_filter
+        ]
+
+    if len(filtered) < len(value_bets):
+        st.caption(f"Showing {len(filtered)} of {len(value_bets)} picks")
+
+    return filtered
 
 
 def compute_bet_quality(vb: Dict[str, Any]) -> int:
@@ -438,14 +581,48 @@ def render_quality_mini_bar(vb: Dict[str, Any]) -> None:
         st.caption(f"Maturity penalty: {bd['maturity_penalty']:.0%}")
 
 
-def render_hero_card(vb: Dict[str, Any]) -> None:
+def _why_number_one(vb: Dict[str, Any]) -> str:
+    parts = []
+    edge_val = vb.get("edge", 0)
+    min_games = vb.get("min_games", 0)
+    odds = vb.get("odds_decimal", 0)
+    parts.append(f"Edge +{edge_val:.1%}")
+    if min_games >= 20:
+        parts.append("mature ratings")
+    elif min_games >= 10:
+        parts.append("developing ratings")
+    else:
+        parts.append("early-season data")
+    if 1.5 <= odds <= 4.0:
+        parts.append("sane odds range")
+    return " with ".join(parts[:1]) + (", " + " & ".join(parts[1:]) if len(parts) > 1 else "")
+
+
+def _stake_suggestion(vb: Dict[str, Any], bankroll: float = 1000) -> str:
+    p = vb.get("model_prob", 0.5)
+    odds = vb.get("odds_decimal", 1.01)
+    if odds <= 1:
+        return "$1"
+    kelly_frac = max(0, (p * (odds - 1) - (1 - p)) / (odds - 1))
+    quarter_kelly = kelly_frac * 0.25
+    suggested = max(1, min(bankroll * quarter_kelly, bankroll * 0.05))
+    return f"${suggested:.0f}"
+
+
+def render_hero_card(vb: Dict[str, Any], backtest_hint: Optional[str] = None) -> None:
     risk = _risk_tag(vb.get("edge", 0), vb.get("min_games", 0))
     risk_colors = {"Low": "green", "Medium": "orange", "High": "red"}
     risk_color = risk_colors.get(risk, "gray")
     q = vb.get("quality", 0)
 
     with st.container(border=True):
-        st.markdown("### \U0001f3af Best Bet Right Now")
+        top_l, top_r = st.columns([4, 1])
+        with top_l:
+            st.markdown("### \U0001f3af Best Bet Right Now")
+            st.markdown(f"**{vb['home_team']}** vs **{vb['away_team']}**")
+        with top_r:
+            st.markdown(f":{risk_color}[**{risk} Risk**]")
+
         h1, h2, h3, h4, h5 = st.columns(5)
         h1.metric("Pick", vb["selection"])
         h2.metric("Odds", f"{vb['odds_decimal']:.2f}")
@@ -453,17 +630,21 @@ def render_hero_card(vb: Dict[str, Any]) -> None:
         h4.metric("Model %", f"{vb['model_prob']:.1%}")
         h5.metric("Quality", f"{q}/100")
 
-        st.markdown(f"Risk: :{risk_color}[**{risk}**]")
-
-        explainer = _build_pick_explainer(vb)
-        st.caption(f"Why: {explainer}")
+        why = _why_number_one(vb)
+        st.markdown(f"**Why this is #1:** {why}")
 
         model_p = vb.get("model_prob", 0)
         implied_p = vb.get("implied_prob", 0)
         edge_val = vb.get("edge", 0)
-        st.markdown(
-            f"**Confidence vs Implied** — Model: {model_p:.0%} | Market implied: {implied_p:.0%} | Edge: +{edge_val:.0%}"
+        st.caption(
+            f"Model: {model_p:.0%} | Market: {implied_p:.0%} | Edge: +{edge_val:.0%}"
         )
+
+        stake_sug = _stake_suggestion(vb)
+        st.caption(f"Suggested stake (quarter-Kelly): **{stake_sug}** on $1000 bankroll")
+
+        if backtest_hint:
+            st.caption(f"Backtest says: {backtest_hint}")
 
         st.caption("Show all picks below \u2193")
 
@@ -478,29 +659,64 @@ def render_action_strip(run_data: Dict[str, Any]) -> None:
 
     if value_bets_count > 0 and value_bets:
         mature_count = sum(1 for vb in value_bets if vb.get("min_games", 0) >= 20)
-        st.success(f"{value_bets_count} value bets found — top {mature_count} are Mature teams")
+        st.success(f"{value_bets_count} value bets found \u2014 {mature_count} with mature ratings")
     elif odds_fetched == 0:
-        st.info("No odds available yet — come back closer to game time")
+        st.info("No odds available yet \u2014 come back closer to game time")
     elif matched == 0 and (unmatched_fx or unmatched_odds):
         reason = _diagnose_unmatched(unmatched_fx, unmatched_odds)
         if reason == "naming":
-            st.warning("Fixtures and odds found but names don't match — check aliases in Fix Issues tab")
+            st.warning("Fixtures and odds found but names don't match")
         else:
-            st.info("Fixtures and odds cover different rounds — try again closer to game day")
+            st.info("Fixtures and odds cover different rounds")
+        ac1, ac2 = st.columns(2)
+        with ac1:
+            if reason == "naming":
+                st.caption("Check the Fix Issues tab for name details")
+        with ac2:
+            if st.button("Extend lookahead to 21 days", key="action_extend_lookahead"):
+                st.session_state["lookahead_days"] = 21
+                st.rerun()
     elif value_bets_count == 0 and matched and matched > 0:
-        st.info("All games checked but none passed filters — try lowering edge threshold")
+        st.info("All games checked but none passed filters")
+        ac1, ac2, ac3 = st.columns(3)
+        with ac1:
+            current_edge = st.session_state.get("min_edge", 5)
+            new_edge = max(1, current_edge - 2)
+            if st.button(f"Lower edge to {new_edge}%", key="action_lower_edge"):
+                st.session_state["min_edge"] = new_edge
+                st.rerun()
+        with ac2:
+            if st.button("Widen odds range", key="action_widen_odds"):
+                st.session_state["odds_range"] = (1.20, 8.00)
+                st.rerun()
+        with ac3:
+            if st.button("Switch to Aggressive", key="action_aggressive"):
+                st.info("Select Aggressive profile in the sidebar and re-run")
 
 
-def render_bet_slip(value_bets: List[Dict[str, Any]], league_label: str) -> None:
+def render_bet_builder(value_bets: List[Dict[str, Any]], league_label: str) -> None:
     experimental = not is_two_outcome(league_label)
 
     with st.container(border=True):
-        st.markdown("### \U0001f4cb Bet Slip")
-        st.caption(f"{len(value_bets)} pick(s) in slip")
+        st.markdown("### \U0001f4cb Bet Builder")
+
+        a_tier = [vb for vb in value_bets if quality_tier(vb.get("quality", 0)) == "A"]
+        top_3 = value_bets[:3] if len(value_bets) >= 3 else value_bets
+
+        b1, b2 = st.columns(2)
+        with b1:
+            if a_tier:
+                st.caption(f"{len(a_tier)} A-tier pick(s)")
+            else:
+                st.caption("No A-tier picks")
+        with b2:
+            st.caption(f"Top {len(top_3)} by quality")
 
         for vb in value_bets:
+            tier = quality_tier(vb.get("quality", 0))
             st.markdown(
-                f"- **{vb['selection']}** @ {vb['odds_decimal']:.2f} — edge {vb['edge']:.1%}"
+                f"- **{vb['selection']}** @ {vb['odds_decimal']:.2f} \u2014 "
+                f"edge {vb['edge']:.1%} \u2022 Tier {tier}"
             )
 
         stake = st.number_input(
@@ -511,7 +727,8 @@ def render_bet_slip(value_bets: List[Dict[str, Any]], league_label: str) -> None
             step=1,
             key=f"bet_slip_stake_{league_label}",
         )
-        st.markdown(f"**Total outlay: ${stake * len(value_bets)}**")
+        outlay = stake * len(value_bets)
+        st.markdown(f"**Total outlay: ${outlay}** \u2014 {len(value_bets)} bet(s)")
 
         if experimental:
             st.checkbox(
@@ -531,7 +748,7 @@ def render_bet_slip(value_bets: List[Dict[str, Any]], league_label: str) -> None
         with col_csv:
             buf = io.StringIO()
             writer = csv.writer(buf)
-            writer.writerow(["Selection", "Odds", "Edge", "Model %", "Implied %", "EV/unit"])
+            writer.writerow(["Selection", "Odds", "Edge", "Model %", "Implied %", "EV/unit", "Quality", "Tier"])
             for vb in value_bets:
                 writer.writerow([
                     vb["selection"],
@@ -540,6 +757,8 @@ def render_bet_slip(value_bets: List[Dict[str, Any]], league_label: str) -> None
                     f"{vb['model_prob']:.1%}",
                     f"{vb['implied_prob']:.1%}",
                     f"{vb['ev_per_unit']:.3f}",
+                    vb.get("quality", 0),
+                    quality_tier(vb.get("quality", 0)),
                 ])
             st.download_button(
                 "Export CSV",
@@ -576,55 +795,49 @@ def render_pick_cards(
     if not value_bets:
         return
 
-    avg_edge = sum(vb["edge"] for vb in value_bets) / len(value_bets)
-    avg_ev = sum(vb["ev_per_unit"] for vb in value_bets) / len(value_bets)
-    avg_quality = sum(vb.get("quality", 0) for vb in value_bets) / len(value_bets)
-
-    mc1, mc2, mc3, mc4 = st.columns(4)
-    mc1.metric("Picks Found", len(value_bets))
-    mc2.metric("Avg Edge", f"{avg_edge:.1%}")
-    mc3.metric("Avg EV/unit", f"{avg_ev:.3f}")
-    mc4.metric("Avg Quality", f"{avg_quality:.0f}/100")
-
-    st.divider()
-
     for i, vb in enumerate(value_bets):
         q = vb.get("quality", 0)
         q_label = quality_label(q)
         tier = quality_tier(q)
         min_games = vb.get("min_games", 0)
+        risk = _risk_tag(vb.get("edge", 0), min_games)
+        risk_colors = {"Low": "green", "Medium": "orange", "High": "red"}
+        risk_color = risk_colors.get(risk, "gray")
 
         with st.container(border=True):
-            top_left, top_right = st.columns([3, 1])
+            top_left, top_mid, top_right = st.columns([3, 1, 1])
             with top_left:
-                st.markdown(f"### {vb['home_team']} vs {vb['away_team']}")
                 league_display = vb.get("league", league_label)
-                maturity = _maturity_badge(min_games)
                 display_time = _format_au_time(vb['time'], league_display)
-                st.caption(f"{league_display} \u2022 {vb['date']} \u2022 {display_time} \u2022 Ratings: {maturity}")
+                st.markdown(f"**{vb['home_team']}** vs **{vb['away_team']}**")
+                maturity = _maturity_badge(min_games)
+                st.caption(f"{league_display} \u2022 {vb['date']} {display_time} \u2022 {maturity}")
+            with top_mid:
+                st.markdown(f"Tier **{tier}** \u2022 {q_label}")
             with top_right:
-                st.metric("Quality", f"{q}/100", help="Composite score (0-100) combining edge strength, EV, match confidence, odds range, and rating maturity. Higher = more bettable.")
-                st.caption(f"Tier {tier} \u2022 {q_label}")
+                st.markdown(f":{risk_color}[**{risk} Risk**]")
 
-            c1, c2, c3, c4, c5 = st.columns(5)
-            c1.metric("Pick", vb["selection"], help="The team or player the model says has the best value for this match.")
-            c2.metric("Odds", f"{vb['odds_decimal']:.2f}", help="Consensus decimal odds from sportsbooks (median across all available books).")
-            c3.metric("Edge", f"{vb['edge']:.1%}", help="Model probability minus implied probability. Higher edge = bigger disagreement with the market in your favour.")
-            c4.metric("EV/unit", f"{vb['ev_per_unit']:.3f}", help="Expected profit per $1 staked. E.g. 0.10 means you expect to make $0.10 profit for every $1 bet over time.")
-            c5.metric("Model %", f"{vb['model_prob']:.1%}", help="The Elo model's estimated chance this pick wins the match.")
+            m1, m2, m3, m4, m5 = st.columns(5)
+            m1.metric("Pick", vb["selection"])
+            m2.metric("Model %", f"{vb['model_prob']:.0%}")
+            m3.metric("Market %", f"{vb['implied_prob']:.0%}")
+            m4.metric("Edge", f"+{vb['edge']:.1%}")
+            m5.metric("Odds", f"{vb['odds_decimal']:.2f}")
 
-            explainer = _build_pick_explainer(vb)
-            st.caption(f"Why: {explainer}")
+            with st.expander("Details", expanded=False):
+                d1, d2, d3, d4 = st.columns(4)
+                d1.metric("Quality", f"{q}/100")
+                d2.metric("EV/unit", f"{vb['ev_per_unit']:.3f}")
+                d3.caption(f"Elo: {vb['home_elo']:.0f} / {vb['away_elo']:.0f}")
+                d4.caption(f"Games: {vb.get('home_games', '?')}/{vb.get('away_games', '?')}")
 
-            det1, det2, det3 = st.columns(3)
-            det1.caption(f"Elo: {vb['home_elo']:.0f} / {vb['away_elo']:.0f}")
-            det2.caption(f"Match confidence: {vb['match_confidence']:.0f}%")
-            det3.caption(f"Games: {vb.get('home_games', '?')}/{vb.get('away_games', '?')}")
+                render_quality_mini_bar(vb)
 
-            st.caption(
-                f"Confidence vs Implied — Model: {vb['model_prob']:.0%} | Market: {vb['implied_prob']:.0%} | Edge: +{vb['edge']:.0%}"
-            )
-            render_quality_mini_bar(vb)
+                explainer = _build_pick_explainer(vb)
+                st.caption(f"Why: {explainer}")
+
+                stake_sug = _stake_suggestion(vb)
+                st.caption(f"Quarter-Kelly stake: {stake_sug} on $1000 bankroll")
 
 
 def render_save_controls(
@@ -778,39 +991,93 @@ def display_value_bets_table(
 
 
 def render_saved_picks() -> None:
-    from store import get_recent_picks
+    from store import get_recent_picks, update_result, get_rolling_stats
 
     st.subheader("Saved Picks History")
+
+    try:
+        stats = get_rolling_stats()
+        if stats["total"] > 0:
+            with st.container(border=True):
+                st.markdown("### Rolling Stats")
+                rs1, rs2, rs3, rs4 = st.columns(4)
+                rs1.metric("Record", f"{stats['won']}W-{stats['lost']}L-{stats['voided']}V")
+                hit_rate = (stats['won'] / (stats['won'] + stats['lost']) * 100) if (stats['won'] + stats['lost']) > 0 else 0
+                rs2.metric("Hit Rate", f"{hit_rate:.0f}%")
+                rs3.metric("ROI", f"{stats['roi']:+.1f}%")
+                rs4.metric("Total P/L", f"${stats['total_pl']:+.2f}")
+
+                tier_rows = []
+                for t_label, t_data in stats["quality_tiers"].items():
+                    if t_data["total"] > 0:
+                        hr = t_data["won"] / t_data["total"] * 100
+                        tier_rows.append({"Tier": t_label, "Won": t_data["won"], "Total": t_data["total"], "Hit Rate": f"{hr:.0f}%"})
+                conf_rows = []
+                for c_label, c_data in stats["conf_buckets"].items():
+                    if c_data["total"] > 0:
+                        hr = c_data["won"] / c_data["total"] * 100
+                        conf_rows.append({"Confidence": c_label, "Won": c_data["won"], "Total": c_data["total"], "Hit Rate": f"{hr:.0f}%"})
+
+                if tier_rows or conf_rows:
+                    tc1, tc2 = st.columns(2)
+                    with tc1:
+                        if tier_rows:
+                            st.caption("Hit rate by tier")
+                            st.dataframe(pd.DataFrame(tier_rows), use_container_width=True, hide_index=True)
+                    with tc2:
+                        if conf_rows:
+                            st.caption("Hit rate by confidence")
+                            st.dataframe(pd.DataFrame(conf_rows), use_container_width=True, hide_index=True)
+    except Exception:
+        pass
+
     try:
         history = get_recent_picks(limit=25)
         if history:
-            hist_rows = []
             for h in history:
-                exp_flag = "Experimental" if h.get("is_experimental") else ""
-                hist_rows.append(
-                    {
-                        "Saved": h.get("created_at", ""),
-                        "Match": f"{h['home_team']} vs {h['away_team']}",
-                        "League": h.get("league", ""),
-                        "Selection": h.get("selection", ""),
-                        "Odds": (
-                            f"{h.get('odds_decimal', 0):.2f}"
-                            if h.get("odds_decimal")
-                            else ""
-                        ),
-                        "Edge": f"{h.get('edge', 0):.1%}" if h.get("edge") else "",
-                        "Result": h.get("result", "Pending"),
-                        "P/L": (
-                            f"{h['profit_loss']:.2f}"
-                            if h.get("profit_loss") is not None
-                            else ""
-                        ),
-                        "Type": exp_flag,
-                    }
-                )
-            st.dataframe(
-                pd.DataFrame(hist_rows), use_container_width=True, hide_index=True
-            )
+                result_val = h.get("result") or "Pending"
+                exp_flag = " (Experimental)" if h.get("is_experimental") else ""
+                odds_str = f"{h.get('odds_decimal', 0):.2f}" if h.get("odds_decimal") else ""
+                edge_str = f"{h.get('edge', 0):.1%}" if h.get("edge") else ""
+
+                with st.container(border=True):
+                    rc1, rc2, rc3 = st.columns([3, 1, 2])
+                    with rc1:
+                        st.markdown(f"**{h['home_team']} vs {h['away_team']}**")
+                        st.caption(
+                            f"{h.get('league', '')} \u2022 {h.get('selection', '')} @ {odds_str} \u2022 "
+                            f"Edge {edge_str}{exp_flag}"
+                        )
+                    with rc2:
+                        if result_val == "Pending":
+                            st.markdown(":orange[**Pending**]")
+                        elif result_val == "Won":
+                            st.markdown(":green[**Won**]")
+                        elif result_val == "Lost":
+                            st.markdown(":red[**Lost**]")
+                        else:
+                            st.markdown(f"**{result_val}**")
+                        pl = h.get("profit_loss")
+                        if pl is not None:
+                            st.caption(f"P/L: ${pl:+.2f}")
+                    with rc3:
+                        if result_val == "Pending":
+                            pick_id = int(h.get("id") or 0)
+                            odds_dec = float(h.get("odds_decimal") or 0)
+                            bc1, bc2, bc3 = st.columns(3)
+                            with bc1:
+                                if st.button("Won", key=f"result_won_{pick_id}", type="primary"):
+                                    pl_won = odds_dec - 1.0
+                                    update_result(pick_id, "Won", round(pl_won, 2))
+                                    st.rerun()
+                            with bc2:
+                                if st.button("Lost", key=f"result_lost_{pick_id}"):
+                                    update_result(pick_id, "Lost", -1.0)
+                                    st.rerun()
+                            with bc3:
+                                if st.button("Void", key=f"result_void_{pick_id}"):
+                                    update_result(pick_id, "Void", 0.0)
+                                    st.rerun()
         else:
             st.info("No saved picks yet. Run the pipeline and save your best bets!")
     except Exception:

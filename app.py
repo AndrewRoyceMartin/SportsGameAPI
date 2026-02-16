@@ -43,8 +43,12 @@ from ui_helpers import (
     render_walkforward_results,
     render_hero_card,
     render_action_strip,
-    render_bet_slip,
+    render_bet_builder,
     render_backtest_settings_button,
+    render_funnel_stepper,
+    render_shortlist_summary,
+    render_quick_filters,
+    render_au_season_banner,
 )
 
 
@@ -397,12 +401,14 @@ def main():
                 all_real_leagues, min_edge_val, odds_range, effective_top_n,
                 history_days, lookahead_days, profile, best_bets_mode,
                 min_model_prob=min_model_prob,
+                confidence_target=confidence_target,
             )
         else:
             _render_picks(
                 league_label, min_edge_val, odds_range, effective_top_n,
                 history_days, lookahead_days, best_bets_mode,
                 min_model_prob=min_model_prob,
+                profile=profile, confidence_target=confidence_target,
             )
 
     with tab_explore:
@@ -412,8 +418,35 @@ def main():
             league = run_data.get("league_label", "")
             st.subheader(f"All Results \u2014 {league}")
             st.caption(f"{len(vb)} value bet(s) found")
-            display_value_bets_table(vb, league)
-            render_save_controls(vb, league, key_prefix="explore")
+
+            explore_edge = st.slider(
+                "Show bets down to edge %",
+                min_value=0, max_value=30, value=int(min_edge_val * 100),
+                step=1, key="explore_edge_slider",
+                help="Explore with a lower edge threshold without changing your saved defaults.",
+            )
+            show_near_misses = st.toggle(
+                "Show near-misses (1-2% below threshold)",
+                value=False, key="explore_near_misses",
+            )
+
+            explore_bets = vb
+            if run_data.get("matched_list") and (explore_edge < int(min_edge_val * 100) or show_near_misses):
+                from pipeline import compute_values
+                elo_r = run_data.get("elo_ratings", {})
+                matched_list = run_data.get("matched_list", [])
+                game_counts = run_data.get("game_counts", {})
+                near_edge = max(0, explore_edge - 2) / 100.0 if show_near_misses else explore_edge / 100.0
+                wide_odds = (1.10, 10.0)
+                explore_bets = compute_values(
+                    matched_list, elo_r, near_edge, wide_odds,
+                    league=league, game_counts=game_counts,
+                )
+                explore_bets = attach_quality(explore_bets)
+                explore_bets.sort(key=lambda x: x.get("edge", 0), reverse=True)
+
+            display_value_bets_table(explore_bets, league)
+            render_save_controls(explore_bets, league, key_prefix="explore")
         else:
             st.info("Run the pipeline from the Place Bets tab to see detailed results here.")
 
@@ -539,15 +572,16 @@ def _render_picks(
     league_label, min_edge, odds_range, top_n,
     history_days, lookahead_days, best_bets_mode,
     min_model_prob=0.0,
+    profile="Balanced", confidence_target="Any",
 ):
     three_outcome = not is_two_outcome(league_label)
 
-    if best_bets_mode:
-        st.subheader("Top Picks")
-        st.caption("Showing the highest-quality value bets, sorted by composite quality score")
-    else:
-        st.subheader("Value Bets")
-        st.caption("Compare Elo model predictions against live sportsbook consensus odds")
+    render_au_season_banner(league_label)
+
+    render_funnel_stepper(
+        league_label, profile, min_edge, odds_range,
+        confidence_target, lookahead_days, best_bets_mode,
+    )
 
     missing, stale = get_env_report()
     if missing:
@@ -583,9 +617,16 @@ def _render_picks(
         if value_bets:
             render_hero_card(value_bets[0])
 
-            render_pick_cards(value_bets, league_label)
+            if best_bets_mode:
+                render_shortlist_summary(value_bets)
 
-            render_bet_slip(value_bets, league_label)
+            filtered_bets = render_quick_filters(value_bets, key_prefix="picks_qf")
+
+            col_left, col_right = st.columns([3, 1])
+            with col_left:
+                render_pick_cards(filtered_bets, league_label)
+            with col_right:
+                render_bet_builder(filtered_bets, league_label)
 
             if run_data.get("unmatched_fx") or run_data.get("unmatched_odds"):
                 st.caption("Some games couldn't be matched \u2014 check the Fix Issues tab for details.")
@@ -595,9 +636,12 @@ def _render_all_leagues_picks(
     league_list, min_edge, odds_range, top_n,
     history_days, lookahead_days, profile, best_bets_mode,
     min_model_prob=0.0,
+    confidence_target="Any",
 ):
-    st.subheader("Multi-League Scan")
-    st.caption("Scanning all leagues for the best value bets")
+    render_funnel_stepper(
+        "All", profile, min_edge, odds_range,
+        confidence_target, lookahead_days, best_bets_mode, run_all=True,
+    )
 
     missing, stale = get_env_report()
     if missing:
@@ -703,10 +747,16 @@ def _render_all_leagues_picks(
         if all_value_bets:
             render_hero_card(all_value_bets[0])
 
-        render_pick_cards(all_value_bets, "All Leagues")
+            if best_bets_mode:
+                render_shortlist_summary(all_value_bets)
 
-        if all_value_bets:
-            render_bet_slip(all_value_bets, "All Leagues")
+            filtered_bets = render_quick_filters(all_value_bets, key_prefix="all_qf")
+
+            col_left, col_right = st.columns([3, 1])
+            with col_left:
+                render_pick_cards(filtered_bets, "All Leagues")
+            with col_right:
+                render_bet_builder(filtered_bets, "All Leagues")
 
 
 def _run_pipeline(
@@ -736,6 +786,7 @@ def _run_pipeline(
         progress.progress(10, text="Fetching historical results for Elo ratings...")
         elo_ratings, game_counts, result_count = fetch_elo_ratings(league_label, history_days)
         run_data["elo_ratings"] = elo_ratings
+        run_data["game_counts"] = game_counts
         if result_count == 0:
             st.warning(
                 f"No historical results for {league_label}. Using default ratings."

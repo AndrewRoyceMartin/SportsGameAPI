@@ -158,3 +158,67 @@ def update_result(pick_id: int, result: str, profit_loss: float) -> None:
     )
     conn.commit()
     conn.close()
+
+
+def get_rolling_stats() -> Dict[str, Any]:
+    init_db()
+    conn = _connect()
+
+    settled = conn.execute(
+        "SELECT * FROM picks WHERE result IN ('Won', 'Lost', 'Void') ORDER BY created_at DESC"
+    ).fetchall()
+    settled = [dict(r) for r in settled]
+
+    total = len(settled)
+    won = sum(1 for r in settled if r["result"] == "Won")
+    lost = sum(1 for r in settled if r["result"] == "Lost")
+    voided = sum(1 for r in settled if r["result"] == "Void")
+    total_pl = sum(r.get("profit_loss", 0) or 0 for r in settled)
+    total_staked = sum(1 for r in settled if r["result"] in ("Won", "Lost"))
+    roi = (total_pl / total_staked * 100) if total_staked > 0 else 0
+
+    quality_tiers = {"A": {"won": 0, "total": 0}, "B": {"won": 0, "total": 0}, "C": {"won": 0, "total": 0}}
+    conf_buckets = {"50-59%": {"won": 0, "total": 0}, "60-69%": {"won": 0, "total": 0}, "70%+": {"won": 0, "total": 0}}
+
+    for r in settled:
+        if r["result"] == "Void":
+            continue
+        meta = {}
+        if r.get("meta"):
+            try:
+                meta = json.loads(r["meta"])
+            except Exception:
+                pass
+        q = meta.get("quality", 0)
+        if q >= 80:
+            t = "A"
+        elif q >= 60:
+            t = "B"
+        else:
+            t = "C"
+        quality_tiers[t]["total"] += 1
+        if r["result"] == "Won":
+            quality_tiers[t]["won"] += 1
+
+        mp = r.get("model_prob") or 0
+        if mp >= 0.70:
+            bucket = "70%+"
+        elif mp >= 0.60:
+            bucket = "60-69%"
+        else:
+            bucket = "50-59%"
+        conf_buckets[bucket]["total"] += 1
+        if r["result"] == "Won":
+            conf_buckets[bucket]["won"] += 1
+
+    conn.close()
+    return {
+        "total": total,
+        "won": won,
+        "lost": lost,
+        "voided": voided,
+        "total_pl": total_pl,
+        "roi": roi,
+        "quality_tiers": quality_tiers,
+        "conf_buckets": conf_buckets,
+    }
