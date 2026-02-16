@@ -1,0 +1,128 @@
+Thought for 33s
+
+Yep — I can see your updated replit.md in the repo, and it now documents the exact UX flow and features you’ve been building, including the preflight availability check (“quick SofaScore fixture count per league in lookahead window → Ready / No fixtures / Error”), the 5-tab layout, the funnel stepper (Scan → Risk → Review), and the new clean light theme direction.
+
+What you’ve already got (per replit.md)
+
+This matters because Step 4 should build on what’s already in place, not duplicate it:
+
+Preflight availability check is already specified as Step 0 in the pipeline.
+
+Trust & Tuning already includes backtest + walk-forward + baselines + parameter tuning (grid search).
+
+Your UI already supports an “apply suggested settings” concept (confidence thresholds), and the overall app is structured around pipeline → cards → bet builder.
+
+So Step 4 should be: make calibration results actually drive live picks automatically (and visibly), with minimal friction.
+
+Step 4 (recommended): “Calibrate → Apply → Scan” loop for live picks
+Goal
+
+When you run tuning/backtest, the app should apply the tuned Elo params to future predictions immediately (and optionally persist them), so “Place Bets” is always using the best-known settings for that league.
+
+What this adds (UX)
+
+In Place Bets, add a small block near the funnel stepper:
+
+League readiness (from the preflight)
+
+Model readiness (do we have tuned params for this league?)
+
+Buttons:
+
+Run quick calibration (recommended) (walk-forward on last X days + pick best from small grid)
+
+Apply tuned params to live picks
+
+Optional: Save tuned params (persist for next session)
+
+Also show a badge like:
+
+✅ “Using tuned params: K=…, HomeAdv=…, Half-life=…”
+or
+
+⚠️ “Using defaults (no tuned params yet)”
+
+Replit implementation instructions (kept tight)
+
+Below is the cleanest way to wire it with minimal disruption.
+
+1) Add a “tuned params override” mechanism
+
+Where: league_defaults.py (or features.py, but defaults file is fine)
+
+Create a helper like get_elo_params(league, overrides=None) that returns:
+
+overrides[league] if present
+
+else ELO_PARAMS[league]
+
+Why: then pipeline and backtest can share the same source of truth.
+
+2) Store tuned params in st.session_state
+
+Where: app.py
+
+On startup:
+
+st.session_state.setdefault("elo_overrides", {})
+
+When tuning finishes:
+
+st.session_state["elo_overrides"][league] = best_params
+
+3) Make live pipeline use overrides
+
+Where: wherever you currently build Elo / compute probabilities (typically pipeline.py calling into features.py)
+
+Pass overrides=st.session_state["elo_overrides"] (or just the league’s chosen params) into the Elo builder / predictor.
+
+Ensure the prediction path uses the same params object that tuning returns.
+
+4) Add a “Run calibration + apply” button (Place Bets)
+
+Where: app.py in the Place Bets tab, near your stepper/hero area
+
+On click:
+
+Run a short walk-forward (fast) or a small grid (K + home_adv only).
+
+Pick the best by log loss (better than accuracy for calibration) — you already report log loss/Brier in docs.
+
+Save into st.session_state["elo_overrides"][league]
+
+Re-run the pipeline (or set a flag to rerun).
+
+5) (Optional but worthwhile) Persist tuned params
+
+Simplest persistence option: store in SQLite (you already have store.py + picks DB).
+Add a tiny table: elo_tuned_params(league TEXT PRIMARY KEY, params_json TEXT, updated_at TEXT)
+
+On app load:
+
+load tuned params into session_state["elo_overrides"]
+
+Why this is the “right” Step 4
+
+Because right now you can tune, but unless those tuning outputs are actually used in the live prediction path, you’re not improving future picks — you’re only generating insight in the Trust & Tuning tab.
+
+This Step 4 makes the workflow you described real:
+
+Pick sport/league → check availability → calibrate/tune → apply → scan best bets
+
+…and it’s consistent with what your replit.md already describes as the architecture and pipeline.
+
+Quick check before we move to Step 5
+
+After you implement Step 4, do this sanity test in Replit:
+
+Run Place Bets without calibration → note top pick + model %
+
+Run calibration → apply tuned params
+
+Re-run Place Bets → confirm:
+
+badge shows tuned params
+
+at least some probabilities shift (even slightly)
+
+backtest metrics for that league (log loss / brier) improve vs defaults

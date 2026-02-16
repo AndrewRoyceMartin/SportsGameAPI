@@ -83,13 +83,17 @@ def _game_to_elo_dict(g: Game) -> dict:
     }
 
 
-def fetch_elo_ratings(league_label: str, history_days: int) -> Tuple[dict, dict, int]:
+def fetch_elo_ratings(
+    league_label: str,
+    history_days: int,
+    elo_overrides: dict | None = None,
+) -> Tuple[dict, dict, int]:
     results = get_results_history(league=league_label, since_days=history_days)
     elo_dicts = [
         _game_to_elo_dict(g) for g in results
         if g.home_score is not None and g.away_score is not None
     ]
-    ep = get_elo_params(league_label)
+    ep = get_elo_params(league_label, overrides=elo_overrides)
     if elo_dicts:
         ratings, game_counts = build_elo_ratings(
             elo_dicts,
@@ -196,8 +200,9 @@ def compute_values(
     odds_range: Tuple[float, float],
     league: str = "",
     game_counts: Optional[Dict[str, int]] = None,
+    elo_overrides: dict | None = None,
 ) -> List[Dict[str, Any]]:
-    ep = get_elo_params(league) if league else {"home_adv": 65, "scale": 400}
+    ep = get_elo_params(league, overrides=elo_overrides) if league else {"home_adv": 65, "scale": 400}
     gc = game_counts or {}
     value_bets = []
 

@@ -46,8 +46,11 @@ ELO_PARAMS = {
 DEFAULT_ELO = {"k": 20, "home_adv": 65, "scale": 400, "recency_half_life": 45}
 
 
-def get_elo_params(league: str) -> dict:
-    return ELO_PARAMS.get(league, DEFAULT_ELO)
+def get_elo_params(league: str, overrides: dict | None = None) -> dict:
+    base = dict(ELO_PARAMS.get(league, DEFAULT_ELO))
+    if overrides and league in overrides:
+        base.update(overrides[league])
+    return base
 
 
 DEFAULTS = {

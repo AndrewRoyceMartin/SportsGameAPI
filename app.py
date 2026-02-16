@@ -15,7 +15,7 @@ from league_map import (
     EXPERIMENTAL_LEAGUES,
     _SEPARATOR,
 )
-from league_defaults import DEFAULTS, RUN_PROFILES, apply_profile
+from league_defaults import DEFAULTS, RUN_PROFILES, apply_profile, get_elo_params
 from stats_provider import clear_events_cache
 from pipeline import (
     fetch_elo_ratings,
@@ -541,6 +541,7 @@ def main():
                 explore_bets = compute_values(
                     matched_list, elo_r, near_edge, wide_odds,
                     league=league, game_counts=game_counts,
+                    elo_overrides=st.session_state.get("elo_overrides"),
                 )
                 explore_bets = attach_quality(explore_bets)
                 explore_bets.sort(key=lambda x: x.get("edge", 0), reverse=True)
@@ -692,6 +693,30 @@ def main():
                 tune_result = tune_elo_params(bt_league, total_days=270, train_days=210, test_days=30)
             render_tuning_results(tune_result)
 
+            if not tune_result.get("error"):
+                best = tune_result["best_params"]
+                current = tune_result.get("current_params", {})
+                changed = (best.get("k") != current.get("k") or best.get("home_adv") != current.get("home_adv"))
+                if changed:
+                    if st.button(
+                        f"Apply tuned params (K={best['k']}, Home Adv={best['home_adv']})",
+                        type="primary",
+                        use_container_width=True,
+                        key="apply_tuned",
+                    ):
+                        base_ep = get_elo_params(bt_league)
+                        st.session_state.setdefault("elo_overrides", {})[bt_league] = {
+                            "k": best["k"],
+                            "home_adv": best["home_adv"],
+                            "scale": base_ep["scale"],
+                            "recency_half_life": base_ep["recency_half_life"],
+                        }
+                        st.success(
+                            f"Applied! K={best['k']}, Home Adv={best['home_adv']} will be used "
+                            f"for {bt_league} predictions. Re-run the backtest to confirm improvement."
+                        )
+                        st.rerun()
+
     with tab_diagnostics:
         run_data = st.session_state.get("last_run_data")
         if run_data:
@@ -755,7 +780,55 @@ def _render_picks(
             "3-outcome market \u2014 edges may be overstated. Best side per match shown."
         )
 
-    if st.button("Find Value Bets", type="primary", use_container_width=True):
+    st.session_state.setdefault("elo_overrides", {})
+    _elo_ov = st.session_state["elo_overrides"]
+    if league_label in _elo_ov:
+        _tuned = _elo_ov[league_label]
+        st.success(
+            f"Using tuned params: K={_tuned.get('k', '?')}, "
+            f"Home Adv={_tuned.get('home_adv', '?')}, "
+            f"Half-life={_tuned.get('recency_half_life', '?')}",
+            icon="\u2705",
+        )
+    else:
+        st.caption("\u26a0\ufe0f Using default Elo params (no tuned params yet)")
+
+    cal_col1, cal_col2 = st.columns([1, 1])
+    with cal_col1:
+        if st.button("Find Value Bets", type="primary", use_container_width=True):
+            _do_find = True
+        else:
+            _do_find = False
+    with cal_col2:
+        if st.button(
+            "Quick Calibrate",
+            use_container_width=True,
+            help="Runs a fast grid search to find the best K-factor and home advantage "
+                 "for this league, then applies the tuned params automatically.",
+        ):
+            with st.spinner(f"Calibrating {league_label}... testing parameter combinations"):
+                clear_events_cache()
+                tune_result = tune_elo_params(league_label, total_days=270, train_days=210, test_days=30)
+            if tune_result.get("error"):
+                st.warning(tune_result["error"])
+            else:
+                best = tune_result["best_params"]
+                base_ep = get_elo_params(league_label)
+                st.session_state["elo_overrides"][league_label] = {
+                    "k": best["k"],
+                    "home_adv": best["home_adv"],
+                    "scale": base_ep["scale"],
+                    "recency_half_life": base_ep["recency_half_life"],
+                }
+                st.success(
+                    f"Calibrated! Best params: K={best['k']}, Home Adv={best['home_adv']} "
+                    f"(log loss: {tune_result['best_log_loss']:.4f}, "
+                    f"accuracy: {tune_result['best_accuracy']:.1%}). "
+                    f"These will be used for your next scan."
+                )
+                st.rerun()
+
+    if _do_find:
         st.session_state.setdefault("league_config", {})[league_label] = {
             "confidence_target": st.session_state.get("conf_target_sel", "Any"),
             "min_edge": st.session_state.get("min_edge", 5),
@@ -769,6 +842,7 @@ def _render_picks(
             history_days, lookahead_days=lookahead_days,
             dedup_per_match=three_outcome, best_bets_mode=best_bets_mode,
             min_model_prob=min_model_prob,
+            elo_overrides=st.session_state.get("elo_overrides"),
         )
 
         run_data["league_label"] = league_label
@@ -837,7 +911,8 @@ def _render_all_leagues_picks(
 
             try:
                 clear_events_cache()
-                elo_ratings, league_gc, _ = fetch_elo_ratings(league, league_history)
+                _league_ov = st.session_state.get("elo_overrides", {}).get(league)
+                elo_ratings, league_gc, _ = fetch_elo_ratings(league, league_history, elo_overrides=_league_ov)
                 harvest_games = fetch_harvest_odds(harvest_key, league_lookahead, league_label=league)
                 if not harvest_games:
                     continue
@@ -855,7 +930,7 @@ def _render_all_leagues_picks(
                 all_matched += len(matched)
                 if not matched:
                     continue
-                bets = compute_values(matched, elo_ratings, min_edge, odds_range, league=league, game_counts=league_gc)
+                bets = compute_values(matched, elo_ratings, min_edge, odds_range, league=league, game_counts=league_gc, elo_overrides=st.session_state.get("elo_overrides"))
                 if three_outcome and bets:
                     bets = dedup_best_side(bets)
                 for b in bets:
@@ -924,7 +999,7 @@ def _render_all_leagues_picks(
 def _run_pipeline(
     league_label, harvest_key, min_edge, odds_range, top_n,
     history_days, lookahead_days=3, dedup_per_match=False, best_bets_mode=False,
-    min_model_prob=0.0,
+    min_model_prob=0.0, elo_overrides=None,
 ):
     run_data = {
         "odds_fetched": 0,
@@ -946,7 +1021,7 @@ def _run_pipeline(
 
     try:
         progress.progress(10, text="Fetching historical results for Elo ratings...")
-        elo_ratings, game_counts, result_count = fetch_elo_ratings(league_label, history_days)
+        elo_ratings, game_counts, result_count = fetch_elo_ratings(league_label, history_days, elo_overrides=elo_overrides)
         run_data["elo_ratings"] = elo_ratings
         run_data["game_counts"] = game_counts
         if result_count == 0:
@@ -1018,7 +1093,7 @@ def _run_pipeline(
             return [], run_data
 
         progress.progress(85, text="Computing value bets...")
-        value_bets = compute_values(matched, elo_ratings, min_edge, odds_range, league=league_label, game_counts=game_counts)
+        value_bets = compute_values(matched, elo_ratings, min_edge, odds_range, league=league_label, game_counts=game_counts, elo_overrides=elo_overrides)
 
         if dedup_per_match and value_bets:
             value_bets = dedup_best_side(value_bets)
