@@ -28,6 +28,8 @@ from pipeline import (
     run_backtest,
     run_walkforward_backtest,
     tune_elo_params,
+    preflight_availability,
+    preflight_scan,
 )
 from ui_helpers import (
     show_diagnostics,
@@ -52,6 +54,7 @@ from ui_helpers import (
     render_au_season_banner,
     inject_action_styles,
     render_tuning_results,
+    render_availability_table,
 )
 
 
@@ -245,6 +248,47 @@ def main():
             st.stop()
 
         run_all = league_label == "All"
+        all_real_leagues = [l for l in leagues if not is_separator(l)]
+
+        avail_key = "preflight_results"
+        check_cols = st.columns([1, 1])
+        with check_cols[0]:
+            check_single = st.button(
+                "Check Availability",
+                help="Quick check if fixtures exist for the selected league(s) in the lookahead window.",
+                use_container_width=True,
+                key="preflight_btn",
+            )
+        with check_cols[1]:
+            scan_all_btn = st.button(
+                "Scan All",
+                help="Check fixture availability across all visible leagues.",
+                use_container_width=True,
+                key="preflight_scan_btn",
+            )
+
+        if check_single:
+            if run_all:
+                with st.spinner("Checking all leagues..."):
+                    clear_events_cache()
+                    results = preflight_scan(all_real_leagues)
+                st.session_state[avail_key] = results
+            else:
+                with st.spinner(f"Checking {league_label}..."):
+                    clear_events_cache()
+                    result = preflight_availability(league_label)
+                st.session_state[avail_key] = [result]
+
+        if scan_all_btn:
+            with st.spinner(f"Scanning {len(all_real_leagues)} leagues..."):
+                clear_events_cache()
+                results = preflight_scan(all_real_leagues)
+            st.session_state[avail_key] = results
+
+        preflight_data = st.session_state.get(avail_key)
+        if preflight_data:
+            with st.expander("Availability", expanded=True):
+                render_availability_table(preflight_data)
 
         profile = st.selectbox(
             "Run Profile",
@@ -354,8 +398,6 @@ def main():
             sport_tag = LEAGUE_SPORT.get(league_label, "")
             mode_tag = "Best Bets" if best_bets_mode else "Full Scan"
             st.caption(f"**{league_label}** ({sport_tag}) \u2014 {profile} \u2014 {mode_tag}")
-
-    all_real_leagues = [l for l in leagues if not is_separator(l)]
 
     if best_bets_mode:
         effective_top_n = min(top_n, 10)

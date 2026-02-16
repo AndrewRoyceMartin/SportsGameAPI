@@ -99,6 +99,44 @@ def render_funnel_stepper(
         st.caption(pills)
 
 
+_STATUS_LABELS = {
+    "ready": ("Ready", "green", "Fixtures found in the lookahead window — pipeline can run."),
+    "no_fixtures": ("No fixtures", "red", "No upcoming games found. Try a longer lookahead window or check back later."),
+    "error": ("Error", "orange", "Something went wrong checking this league."),
+}
+
+
+def render_availability_table(rows: List[Dict[str, Any]]) -> None:
+    if not rows:
+        st.info("No availability data yet. Click **Check Availability** to scan.")
+        return
+
+    ready = [r for r in rows if r["status"] == "ready"]
+    empty = [r for r in rows if r["status"] != "ready"]
+
+    if ready:
+        st.markdown(f"**{len(ready)}** league(s) ready to run")
+    if empty:
+        st.markdown(f"**{len(empty)}** league(s) with no fixtures in window")
+
+    for r in rows:
+        label, color, tip = _STATUS_LABELS.get(r["status"], ("Unknown", "gray", ""))
+        badge = f":{color}[{label}]"
+        fixtures_txt = f"{r['fixtures_count']} fixture(s)" if r["fixtures_count"] else "0 fixtures"
+        window_txt = f"{r['lookahead_days']}d window"
+
+        col1, col2, col3 = st.columns([3, 3, 2])
+        with col1:
+            st.markdown(f"**{r['league']}** {badge}")
+        with col2:
+            st.caption(f"{fixtures_txt} · {window_txt}")
+        with col3:
+            if r["status"] == "no_fixtures":
+                suggest = min(r["lookahead_days"] * 2, 28)
+                if suggest > r["lookahead_days"]:
+                    st.caption(f"Try {suggest}d lookahead")
+
+
 _AU_PRESEASON_LEAGUES = {"AFL", "NRL", "NBL"}
 
 def render_au_season_banner(league_label: str) -> None:

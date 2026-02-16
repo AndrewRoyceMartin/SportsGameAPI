@@ -53,6 +53,7 @@ SofaScore provides fixtures/results via sport-specific endpoints (basketball, ic
 - Game dataclass: league, start_time_utc, home, away, home_score, away_score, status
 
 ## Value Engine Pipeline
+0. Preflight availability check: quick SofaScore fixture count per league in lookahead window → Ready / No fixtures / Error status
 1. User selects sport filter + search to narrow leagues, then picks a league
 2. Run profile (Conservative/Balanced/Aggressive) adjusts defaults automatically
 3. Per-league defaults auto-applied with profile multipliers (min edge, odds range, history/lookahead days)

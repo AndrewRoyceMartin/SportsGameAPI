@@ -1,0 +1,174 @@
+Right now you’re often running the full pipeline (fixtures + odds + matching + filters) only to discover “no fixtures in window” or “odds exist but fixtures don’t”. A quick preflight avoids that.
+
+Below is a clean way to do it that won’t hammer SofaScore/Apify and will actually make the UI feel instant.
+
+What to add: a “Preflight Availability Check”
+Goal
+
+Before running the full pipeline for a chosen league (or before presenting leagues as “worth checking”), do a lightweight check:
+
+Fixtures available? (stats source)
+
+Odds available? (odds source)
+
+Window used (lookahead days)
+
+Result: ✅ Ready / ⚠️ Odds only / ⚠️ Fixtures only / ⛔ None
+
+Then:
+
+Grey out leagues that have nothing
+
+Add a “Good to run now” badge
+
+If user hits Run on a “bad” league, show an immediate guidance message (increase lookahead, switch league, etc.)
+
+Fastest implementation pattern
+1) Add a preflight function (new file or in features.py)
+
+This function should be cheap: 1 stats call + (optional) 1 odds call.
+
+Key trick: you don’t need full event detail — just counts.
+
+Pseudo-structure:
+
+def preflight_availability(league_key: str, *, include_odds: bool = True) -> dict:
+    defaults = get_league_defaults(league_key)
+    today = date.today()
+    date_to = today + timedelta(days=defaults.lookahead_days)
+
+    # Stats check (SofaScore)
+    fixtures = get_upcoming_games(league_key, date_from=today, date_to=date_to)
+    fixtures_count = len(fixtures)
+
+    odds_count = None
+    odds_with_lines = None
+    if include_odds:
+        odds = fetch_odds_for_league(league_key)     # your existing odds_fetch path
+        odds_count = len(odds)
+        odds_with_lines = count_with_moneyline(odds) # cheap helper
+
+    return {
+        "league": league_key,
+        "fixtures_count": fixtures_count,
+        "odds_count": odds_count,
+        "odds_with_lines": odds_with_lines,
+        "lookahead_days": defaults.lookahead_days,
+        "window": (str(today), str(date_to)),
+        "status": compute_status(fixtures_count, odds_with_lines),
+    }
+
+
+Where status is something like:
+
+ready (fixtures>0 AND odds_with_lines>0)
+
+fixtures_only
+
+odds_only
+
+none
+
+2) Cache the preflight (critical)
+
+Use Streamlit caching so you don’t repeat calls every rerun:
+
+@st.cache_data(ttl=300) (5 minutes) is perfect.
+
+Cache key should include:
+
+league
+
+lookahead_days
+
+odds provider (Sportsbet vs Apify/US books)
+
+3) Add a “Quick check” button in the sidebar
+
+Add a small button:
+
+“Check availability”
+Runs preflight for:
+
+current selected league only (fastest), OR
+
+all leagues under the selected Sport filter (still ok if cached + throttled)
+
+4) Use the results to guide the UI
+
+In the league dropdown list, show:
+
+AFL — ⛔ 0 fixtures (7d) / ✅ odds
+
+NRL — ✅ 6 fixtures / ✅ odds
+
+NBA — ✅ 20 fixtures / ✅ odds
+
+And optionally:
+
+Grey out or hide none
+
+Put ready leagues at the top
+
+Making it faster without extra API cost
+Option A (recommended): Stats-first check
+
+Do stats only preflight by default (1 call), and only check odds when:
+
+user selects that league OR
+
+fixtures_count > 0
+
+This prevents wasted Apify runs when the schedule is empty.
+
+Option B: One-click “Scan all leagues”
+
+You already added a scan-all mode — integrate preflight:
+
+Preflight all leagues (stats only)
+
+Then run full pipeline only for leagues that returned fixtures>0 (and optionally odds>0)
+
+Where this fits in your current app structure
+
+You already have:
+
+features.py building results dicts
+
+ui_helpers.py rendering
+
+So do it like this:
+
+Add preflight_availability() in features.py
+
+Add UI in app.py sidebar:
+
+button “Check availability”
+
+show table of availability results
+
+Add a small renderer in ui_helpers.py:
+
+render_availability_table(rows) with tooltips
+
+Tooltips (what to say)
+
+Use short, actionable tooltips:
+
+Fixtures: “Upcoming games found from the stats source within the league’s lookahead window.”
+
+Odds with lines: “Odds events where head-to-head prices are actually posted (not blank/N/A).”
+
+Ready: “Both fixtures and odds are present, so matching + value filtering can run.”
+
+Practical guardrails (so it doesn’t slow you down)
+
+Use TTL cache (5–10 minutes)
+
+For “Scan all”, limit to:
+
+leagues currently visible under Sport filter
+
+max N leagues per click (e.g., 15–25)
+
+Sleep 200–400 ms between calls if you’re scanning many leagues (avoids rate limits)

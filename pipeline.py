@@ -10,7 +10,60 @@ from odds_fetch import fetch_odds_for_window
 from odds_extract import extract_moneylines, consensus_decimal
 from mapper import match_games_to_odds, _parse_iso
 from value_engine import implied_probability, edge, expected_value
-from league_defaults import get_elo_params
+from league_defaults import get_elo_params, DEFAULTS
+from league_map import LEAGUE_MAP
+import time as _time
+import logging as _logging
+
+_preflight_logger = _logging.getLogger(__name__)
+
+
+def preflight_availability(
+    league_key: str,
+    *,
+    lookahead_override: int | None = None,
+) -> Dict[str, Any]:
+    defaults = DEFAULTS.get(league_key, {})
+    lookahead = lookahead_override or defaults.get("lookahead_days", 7)
+    today = date.today()
+    date_to = today + timedelta(days=lookahead)
+
+    try:
+        fixtures = get_upcoming_games(league=league_key, date_from=today, date_to=date_to)
+        fixtures_count = len(fixtures)
+        stats_error = False
+    except Exception as exc:
+        _preflight_logger.warning("Preflight stats error for %s: %s", league_key, exc)
+        fixtures_count = 0
+        stats_error = True
+
+    if stats_error:
+        status = "error"
+    elif fixtures_count > 0:
+        status = "ready"
+    else:
+        status = "no_fixtures"
+
+    return {
+        "league": league_key,
+        "fixtures_count": fixtures_count,
+        "lookahead_days": lookahead,
+        "window": (str(today), str(date_to)),
+        "status": status,
+    }
+
+
+def preflight_scan(
+    leagues: List[str],
+    *,
+    delay: float = 0.25,
+) -> List[Dict[str, Any]]:
+    results: List[Dict[str, Any]] = []
+    for lg in leagues:
+        results.append(preflight_availability(lg))
+        if delay > 0 and lg != leagues[-1]:
+            _time.sleep(delay)
+    return results
 
 
 def _game_to_elo_dict(g: Game) -> dict:
