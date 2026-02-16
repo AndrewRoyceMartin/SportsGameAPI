@@ -152,7 +152,8 @@ def probe_odds_provider(
     lookahead_days: int = 7,
     timeout: int = 60,
 ) -> Dict[str, Any]:
-    import os
+    from odds_extract import extract_moneylines
+
     has_token = bool(os.getenv("APIFY_TOKEN"))
     provider = get_odds_provider_name(league_label)
 
@@ -160,7 +161,9 @@ def probe_odds_provider(
         return {
             "provider": provider,
             "ok": False,
-            "items": 0,
+            "raw_items": 0,
+            "usable_odds_events": 0,
+            "sample_matchup": None,
             "error": "APIFY_TOKEN not set",
         }
 
@@ -168,22 +171,49 @@ def probe_odds_provider(
         if is_sportsbet_league(league_label):
             actor_id = SPORTSBET_ACTOR_ID
             actor_input = _build_sportsbet_input(league_label)
+            items = run_actor_get_items(actor_id, actor_input, timeout=timeout)
+            raw_count = len(items) if items else 0
+            parsed = parse_sportsbet_items(items or [], league_label)
+            usable = 0
+            sample = None
+            for ev in parsed:
+                snaps = extract_moneylines(ev)
+                if snaps:
+                    usable += 1
+                    if sample is None:
+                        h = (ev.get("homeTeam") or {}).get("mediumName", "?")
+                        a = (ev.get("awayTeam") or {}).get("mediumName", "?")
+                        sample = f"{h} vs {a}"
         else:
             actor_id = "harvest~sportsbook-odds-scraper"
             actor_input = _build_harvest_input(harvest_league_key)
+            items = run_actor_get_items(actor_id, actor_input, timeout=timeout)
+            raw_count = len(items) if items else 0
+            usable = 0
+            sample = None
+            for ev in (items or []):
+                snaps = extract_moneylines(ev)
+                if snaps:
+                    usable += 1
+                    if sample is None:
+                        h = (ev.get("homeTeam") or {}).get("mediumName", "?")
+                        a = (ev.get("awayTeam") or {}).get("mediumName", "?")
+                        sample = f"{h} vs {a}"
 
-        items = run_actor_get_items(actor_id, actor_input, timeout=timeout)
-        count = len(items) if items else 0
         return {
             "provider": provider,
-            "ok": count > 0,
-            "items": count,
+            "ok": usable > 0,
+            "raw_items": raw_count,
+            "usable_odds_events": usable,
+            "sample_matchup": sample,
             "error": "",
         }
     except Exception as exc:
         return {
             "provider": provider,
             "ok": False,
-            "items": 0,
+            "raw_items": 0,
+            "usable_odds_events": 0,
+            "sample_matchup": None,
             "error": str(exc)[:120],
         }

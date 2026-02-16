@@ -345,6 +345,20 @@ def main():
             with st.expander("Availability", expanded=True):
                 render_availability_table(preflight_data)
 
+            for _idx, _row in enumerate(preflight_data):
+                _probe_key = f"probe_{_row['league']}"
+                if st.session_state.get(_probe_key):
+                    with st.spinner(f"Probing odds for {_row['league']}..."):
+                        _probed = preflight_with_odds_probe(
+                            _row["league"],
+                            lookahead_override=_row.get("lookahead_days"),
+                        )
+                    preflight_data[_idx] = _probed
+                    st.session_state[avail_key] = preflight_data
+                    pf_data = st.session_state.get(avail_key, [])
+                    st.session_state["preflight_info"] = {r["league"]: r for r in pf_data}
+                    st.rerun()
+
         profile = st.selectbox(
             "Run Profile",
             options=list(RUN_PROFILES.keys()),

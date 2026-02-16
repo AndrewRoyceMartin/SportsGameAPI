@@ -60,7 +60,9 @@ def preflight_availability(
         "status": status,
         "odds_provider": odds_provider,
         "odds_status": "not_probed",
-        "odds_items": None,
+        "odds_raw_items": None,
+        "odds_usable": None,
+        "odds_sample": None,
         "odds_error": None,
     }
 
@@ -100,7 +102,9 @@ def preflight_with_odds_probe(
         st.session_state[cache_key] = probe
 
     result["odds_provider"] = probe["provider"]
-    result["odds_items"] = probe["items"]
+    result["odds_raw_items"] = probe.get("raw_items", 0)
+    result["odds_usable"] = probe.get("usable_odds_events", 0)
+    result["odds_sample"] = probe.get("sample_matchup")
     result["odds_error"] = probe.get("error", "")
 
     if probe["error"]:

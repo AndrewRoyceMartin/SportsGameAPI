@@ -131,7 +131,6 @@ def render_availability_table(rows: List[Dict[str, Any]]) -> None:
         window_txt = f"{r['lookahead_days']}d window"
 
         provider = r.get("odds_provider", "")
-        odds_items = r.get("odds_items")
         odds_status = r.get("odds_status")
 
         parts = [fixtures_txt, window_txt]
@@ -146,10 +145,22 @@ def render_availability_table(rows: List[Dict[str, Any]]) -> None:
 
         if provider:
             parts.append(f"via {provider}")
+
         if odds_status == "not_probed":
             parts.append("odds not checked")
-        elif odds_items is not None:
-            parts.append(f"{odds_items} odds event(s)")
+        elif odds_status == "skipped":
+            parts.append("odds skipped (no fixtures)")
+        else:
+            raw = r.get("odds_raw_items")
+            usable = r.get("odds_usable")
+            if raw is not None and usable is not None:
+                parts.append(f"{usable}/{raw} usable odds")
+            elif raw is not None:
+                parts.append(f"{raw} raw items")
+
+        sample = r.get("odds_sample")
+        if sample:
+            parts.append(f"e.g. {sample}")
 
         detail = " · ".join(parts)
 
@@ -166,9 +177,17 @@ def _render_availability_action(r: Dict[str, Any], ready_rows: List[Dict[str, An
     status = r["status"]
     lookahead = r["lookahead_days"]
     odds_error = r.get("odds_error", "")
+    odds_status = r.get("odds_status", "")
 
-    if status == "ready":
+    if status == "ready" and odds_status == "ok":
         st.caption(":green[Ready to scan]")
+    elif status == "ready" and odds_status == "not_probed":
+        st.button(
+            "Check odds",
+            key=f"probe_{r['league']}",
+            use_container_width=True,
+            help="Run a quick odds probe for this league",
+        )
     elif status == "no_fixtures":
         suggest = min(lookahead * 3, 28)
         if suggest > lookahead:
@@ -186,6 +205,8 @@ def _render_availability_action(r: Dict[str, Any], ready_rows: List[Dict[str, An
         st.caption(f"Odds error: {short}")
     elif status == "error":
         st.caption("Retry later")
+    else:
+        st.caption(":green[Ready to scan]")
 
 
 _AU_PRESEASON_LEAGUES = {"AFL", "NRL", "NBL"}

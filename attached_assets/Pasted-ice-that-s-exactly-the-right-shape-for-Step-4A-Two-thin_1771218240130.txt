@@ -1,0 +1,122 @@
+ice — that’s exactly the right shape for Step 4A.
+
+Two things to lock in now so this doesn’t bite you later:
+
+1) Make the odds probe “truthy”
+
+Your pipeline can still show “no odds” even if the probe says “odds events found”, unless the probe is checking the same thing the pipeline later consumes.
+
+Best practice: make the probe call the same underlying function that odds_fetch.fetch_odds_events(...) uses, but with:
+
+a small limit (e.g., 20)
+
+a short timeout
+
+no heavy parsing beyond what the pipeline already does
+
+So you don’t end up probing dataset items but later filtering everything out (market missing, scheduledTime missing, etc.), which looks like “results don’t seem right”.
+
+Quick checklist
+
+Your probe should report counts in two columns (very useful):
+
+raw_items: dataset items returned by the actor
+
+usable_odds_events: after your parser extracts posted moneylines
+
+This instantly explains cases like “actor returned 300 items but usable odds = 0”.
+
+2) Add betting info to availability check (without slowing it down)
+
+You asked for “betting info” and “show odds info in table”. The minimal, high-value pieces are:
+
+next_fixture_time_local (for the selected league)
+
+next_odds_time_local (if available in odds events)
+
+moneyline_present_% = usable_odds_events / raw_items
+
+sample_matchup = “Home vs Away” from both sources (first row)
+
+That gives you instant “are we aligned?” signals.
+
+What I’d do next (Step 4B, lightweight, no Replit overload)
+
+Now that Step 4A exists, Step 4B is to make Find Value Bets faster and more reliable using Step 4A outputs.
+
+Step 4B: “Ready Gate + Fast Path”
+
+If Status != READY:
+
+If no fixtures → block (you already do this)
+
+If odds empty/error → allow “Force run” but default to “don’t run”
+
+Fast Path for READY
+
+If you’ve just probed odds and got usable odds events:
+
+reuse cached odds events (5 min TTL) rather than calling Apify again
+
+reuse cached fixtures from availability check too
+
+This usually halves runtime.
+
+A likely issue in your current implementation
+
+“Scan All only checks fixtures… odds not checked.”
+
+That’s fine for cost, but it can create confusion: users see leagues “available” but then “Find Value Bets” returns empty because odds provider is dead.
+
+Fix: for Scan All, keep it cheap but add a “confidence” label:
+
+✅ Fixtures present
+
+⚪ Odds not checked (single-league check required)
+
+And add a one-click action:
+
+“Check odds for this league” button next to each row (still only probes one league at a time).
+
+One more important check: time/date mismatch
+
+If you’re still seeing mismatch issues, the culprit is almost always one of these:
+
+Sportsbet parsing returns local time but you treat it as UTC
+
+SofaScore returns UTC but display converts incorrectly
+
+Your matching window is too narrow for some leagues (you already widened AU)
+
+Best debug line to print/store in diagnostics:
+For the first 5 fixtures + first 5 odds events, show:
+
+home/away
+
+parsed UTC timestamp
+
+displayed local timestamp
+
+diff in hours
+
+If diffs are consistently ~10–11 hours for AU, that’s expected. If they’re random (e.g., 24h, 48h), parsing is wrong.
+
+What I need from you to verify it’s correct (no big paste)
+
+Paste just these small snippets (or tell me filenames/lines if you prefer):
+
+The new probe_odds_* function (wherever it lives)
+
+The availability table builder (function that forms rows)
+
+The “block Find Value Bets if no fixtures” logic
+
+With those three, I can tell you immediately if:
+
+your probe is checking the right thing
+
+counts are meaningful
+
+caching keys are correct
+
+and whether time parsing can still cause false “Odds Empty”
