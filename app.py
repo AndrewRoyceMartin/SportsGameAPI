@@ -342,6 +342,43 @@ def main():
             help="Focus on near-term, high-quality picks. Locks defaults and sorts by quality score.",
         )
 
+        if "league_config" not in st.session_state:
+            st.session_state["league_config"] = {}
+
+        def _get_league_config(league: str) -> dict:
+            configs = st.session_state["league_config"]
+            if league not in configs:
+                d = DEFAULTS.get(league, {})
+                d = apply_profile(d, profile) if d else {}
+                configs[league] = {
+                    "confidence_target": "Any",
+                    "min_edge": d.get("min_edge", 5),
+                    "odds_range": (d.get("min_odds", 1.50), d.get("max_odds", 5.00)),
+                    "history_days": d.get("history_days", 90),
+                    "lookahead_days": d.get("lookahead_days", 3),
+                    "top_n": d.get("top_n", 10),
+                }
+            return configs[league]
+
+        def _save_league_config(league: str) -> None:
+            st.session_state["league_config"][league] = {
+                "confidence_target": st.session_state.get("conf_target_sel", "Any"),
+                "min_edge": st.session_state.get("min_edge", 5),
+                "odds_range": st.session_state.get("odds_range", (1.50, 5.00)),
+                "history_days": st.session_state.get("history_days", 90),
+                "lookahead_days": st.session_state.get("lookahead_days", 3),
+                "top_n": st.session_state.get("top_n", 10),
+            }
+
+        def _load_league_config(league: str) -> None:
+            cfg = _get_league_config(league)
+            st.session_state["min_edge"] = cfg["min_edge"]
+            st.session_state["odds_range"] = cfg["odds_range"]
+            st.session_state["history_days"] = cfg["history_days"]
+            st.session_state["lookahead_days"] = cfg["lookahead_days"]
+            st.session_state["top_n"] = cfg["top_n"]
+            st.session_state["conf_target_sel"] = cfg["confidence_target"]
+
         conf_options = ["Any", "55%+", "60%+", "65%+", "70%+"]
         bt_applied = st.session_state.get("backtest_settings_applied", False)
         bt_target = st.session_state.get("confidence_target_value", 0)
@@ -350,6 +387,20 @@ def main():
             if target_label in conf_options and "conf_target_sel" not in st.session_state:
                 st.session_state["conf_target_sel"] = target_label
                 st.session_state["backtest_settings_applied"] = False
+
+        prev = st.session_state.get("_prev_league")
+        prev_profile = st.session_state.get("_prev_profile")
+        if prev != league_label or prev_profile != profile:
+            if prev and prev != league_label:
+                _save_league_config(prev)
+            if prev_profile != profile:
+                d = DEFAULTS.get(league_label, {})
+                d = apply_profile(d, profile) if d else {}
+                if d:
+                    st.session_state["league_config"].pop(league_label, None)
+            _load_league_config(league_label)
+            st.session_state["_prev_league"] = league_label
+            st.session_state["_prev_profile"] = profile
 
         confidence_target = st.selectbox(
             "Confidence Target",
@@ -377,13 +428,6 @@ def main():
                 st.session_state["history_days"] = d["history_days"]
                 st.session_state["lookahead_days"] = d["lookahead_days"]
                 st.session_state["top_n"] = d["top_n"]
-
-            prev = st.session_state.get("_prev_league")
-            prev_profile = st.session_state.get("_prev_profile")
-            if prev != league_label or prev_profile != profile:
-                _apply_defaults(league_label)
-                st.session_state["_prev_league"] = league_label
-                st.session_state["_prev_profile"] = profile
 
             d_fb = DEFAULTS.get(league_label, {})
             d_fb = apply_profile(d_fb, profile) if d_fb else d_fb
@@ -427,6 +471,7 @@ def main():
 
             if st.button("Reset to defaults"):
                 _apply_defaults(league_label)
+                st.session_state["league_config"].pop(league_label, None)
                 st.rerun()
 
         min_edge_val = st.session_state["min_edge"] / 100.0
@@ -711,6 +756,14 @@ def _render_picks(
         )
 
     if st.button("Find Value Bets", type="primary", use_container_width=True):
+        st.session_state.setdefault("league_config", {})[league_label] = {
+            "confidence_target": st.session_state.get("conf_target_sel", "Any"),
+            "min_edge": st.session_state.get("min_edge", 5),
+            "odds_range": st.session_state.get("odds_range", (1.50, 5.00)),
+            "history_days": st.session_state.get("history_days", 90),
+            "lookahead_days": st.session_state.get("lookahead_days", 3),
+            "top_n": st.session_state.get("top_n", 10),
+        }
         value_bets, run_data = _run_pipeline(
             league_label, harvest_key, min_edge, odds_range, top_n,
             history_days, lookahead_days=lookahead_days,
