@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 
 from zoneinfo import ZoneInfo
@@ -11,7 +11,6 @@ from time_utils import iso_utc
 
 logger = logging.getLogger(__name__)
 
-_SYDNEY_TZ = ZoneInfo("Australia/Sydney")
 _UTC = ZoneInfo("UTC")
 
 SPORTSBET_LEAGUES: Dict[str, Dict[str, str]] = {
