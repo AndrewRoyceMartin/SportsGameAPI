@@ -5,6 +5,7 @@ from datetime import date, timedelta
 
 from store import init_db, save_elo_override, load_elo_override, load_all_elo_overrides
 from config_env import get_env_report
+from connectivity import check_all
 from league_map import (
     sofascore_to_harvest,
     available_leagues,
@@ -209,6 +210,35 @@ def main():
     )
 
     with st.sidebar:
+        _CONN_CACHE_KEY = "_conn_status"
+        _CONN_TTL = 300
+        import time as _time
+
+        def _get_conn_status():
+            cached = st.session_state.get(_CONN_CACHE_KEY)
+            if cached and (_time.time() - cached["ts"]) < _CONN_TTL:
+                return cached["results"]
+            results = check_all()
+            st.session_state[_CONN_CACHE_KEY] = {"ts": _time.time(), "results": results}
+            return results
+
+        conn_results = _get_conn_status()
+        all_ok = all(c.ok for c in conn_results)
+
+        with st.container():
+            st.markdown(
+                f"**Data Sources** {'🟢' if all_ok else '🔴'}",
+            )
+            for c in conn_results:
+                icon = "✅" if c.ok else "❌"
+                latency = f" ({c.latency_ms}ms)" if c.latency_ms is not None else ""
+                detail = f" — {c.detail}" if c.detail and c.detail != "OK" else ""
+                st.caption(f"{icon} **{c.name}**{latency}{detail}")
+            if st.button("Refresh", key="conn_refresh", use_container_width=True):
+                st.session_state.pop(_CONN_CACHE_KEY, None)
+                st.rerun()
+
+        st.divider()
         st.header("Settings")
 
         sport_display = st.selectbox(
