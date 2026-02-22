@@ -168,6 +168,7 @@ def probe_odds_provider(
         }
 
     try:
+        parsed: List[Dict[str, Any]] = []
         if is_sportsbet_league(league_label):
             actor_id = SPORTSBET_ACTOR_ID
             actor_input = _build_sportsbet_input(league_label)
@@ -200,6 +201,7 @@ def probe_odds_provider(
                         a = (ev.get("awayTeam") or {}).get("mediumName", "?")
                         sample = f"{h} vs {a}"
 
+        all_events = parsed if is_sportsbet_league(league_label) else list(items or [])
         return {
             "provider": provider,
             "ok": usable > 0,
@@ -207,6 +209,7 @@ def probe_odds_provider(
             "usable_odds_events": usable,
             "sample_matchup": sample,
             "error": "",
+            "events": all_events,
         }
     except Exception as exc:
         return {

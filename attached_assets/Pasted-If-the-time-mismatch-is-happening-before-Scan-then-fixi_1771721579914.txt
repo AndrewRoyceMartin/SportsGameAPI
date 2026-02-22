@@ -1,0 +1,329 @@
+If the time mismatch is happening before Scan, then fixing only the final mapper path is not enough.
+You need to fix the pre-scan path (availability check / odds probe / fixture preview / gating logic), because that path is currently deciding:
+
+whether a league is “ready”
+
+whether odds exist “for the fixtures”
+
+whether to block or discourage running the scan
+
+So the time bug is affecting discovery, not just final matching.
+
+What this means
+
+We need to move the time hardening upstream into:
+
+Availability check
+
+Odds probe
+
+Pre-scan fixture-vs-odds readiness logic
+
+Any “next game” / “odds empty” classification
+
+Revised Step 1 (Pre-Scan Time Mismatch Fix) — Replit Instructions
+Goal
+
+Make the app correctly identify potential matchable games before Scan so it doesn’t hide valid opportunities.
+
+1) Add a pre-scan “soft matcher” for availability checks
+
+Right now your availability check likely does:
+
+fixture count
+
+odds count
+
+maybe crude comparison / readiness logic
+
+That’s where the issue is.
+
+Add a new helper (in pipeline.py or ui_helpers.py support layer)
+
+Create a lightweight pre-scan matcher that:
+
+compares fixtures vs odds with looser time tolerance
+
+uses team-name similarity first
+
+reports potential matches even if final strict matcher would reject some
+
+Why
+
+Availability should answer:
+
+“Are there likely games here worth scanning?”
+
+—not:
+
+“Can I perfectly match everything under final production thresholds?”
+
+Suggested behavior
+
+For availability/readiness only:
+
+AU leagues: allow 36h soft time window
+
+non-AU leagues: allow 12h soft time window
+
+name threshold: ~55–60 (same as your improved diagnostics)
+
+Return:
+
+potential_matches_count
+
+best_time_delta_hours
+
+likely_issue = time_mismatch / naming / coverage_gap
+
+2) Separate “Availability readiness” from “Final scan matching”
+
+This is the core fix.
+
+In Check Availability logic
+
+Do not use the same strict matcher/gates as the final betting scan.
+
+Instead compute two layers:
+
+Layer A — Raw availability
+
+fixtures found?
+
+odds events found?
+
+provider OK?
+
+lines posted?
+
+Layer B — Likely matchability (soft)
+
+potential fixture↔odds pairs using relaxed time window
+
+classify issue if low/zero
+
+Then show status like:
+
+✅ Ready (fixtures + odds + soft matches found)
+
+⚠️ Likely time mismatch (fixtures + odds exist, names align, times don’t)
+
+⚠️ Likely naming mismatch (fixtures + odds exist, low name alignment)
+
+ℹ️ Coverage gap (fixtures and odds appear to be different rounds)
+
+This stops the app from wrongly implying “no games”.
+
+3) Add explicit time_mismatch diagnosis in _diagnose_unmatched()
+
+You already classify naming vs coverage_gap.
+Now add a third category: time_mismatch.
+
+Rule (simple + effective)
+
+If:
+
+best name similarity is high (e.g. min(home, away) >= 55)
+
+but closest candidate time gap is > soft window and <= 72h
+→ classify as time_mismatch
+
+If closest time gap is many days away → coverage_gap.
+
+This matters
+
+Right now time mismatch can be mislabelled as coverage gap, which hides the real bug.
+
+4) In availability check, probe and store odds event timestamps (normalized)
+
+When you run the odds probe, normalize and store:
+
+raw provider time string
+
+parsed UTC time
+
+parse success/failure
+
+parse notes (e.g., “assumed Sydney TZ”)
+
+Why
+
+If pre-scan is failing, you need to know if the issue is:
+
+parser failure (time blank)
+
+wrong timezone
+
+date rollover
+
+legitimate round mismatch
+
+Add to cached probe result (5-min cache object)
+
+Include fields like:
+
+{
+  "provider": "Sportsbet",
+  "raw_items": 5,
+  "odds_events": [...],
+  "parsed_time_ok": 5,
+  "parsed_time_failed": 0,
+  "time_basis": "UTC via Australia/Sydney",
+}
+
+Then show this in Fix Issues tab.
+
+5) Make “Find Value Bets” gating use soft readiness, not strict match count
+
+You mentioned the scan misses potential games because it “can’t match due to time errors” before scan.
+
+That likely means gating logic is too strict.
+
+Change behavior
+
+If availability shows:
+
+fixtures > 0
+
+odds > 0
+
+soft potential matches > 0 (even if strict final matches currently 0)
+then allow scan and show warning:
+
+“Potential matches found, but time alignment looks off. Scan may return fewer matches until time parsing is corrected.”
+
+This prevents false negatives and lets you test live while debugging.
+
+6) Add a “Pre-Scan Match Preview” section (single-league only)
+
+This will save you hours.
+
+When user clicks Check Availability (single league), show a small table:
+
+Fixture home/away
+
+Fixture UTC
+
+Closest odds event home/away
+
+Odds UTC
+
+Name score
+
+Time gap (h)
+
+Diagnosis (OK / Time mismatch / Naming / Round gap)
+
+Why
+
+This makes the issue visible before Scan and tells you exactly whether the bug is parser/timezone vs data coverage.
+
+7) Harden Sportsbet parser specifically for pre-scan path
+
+Because your issue is early-stage, confirm the odds probe path and scan path use the same parser.
+
+Common bug pattern
+
+Scan path uses parse_sportsbet_items(...) (correct)
+
+Availability probe path uses raw dataset items or a shortcut parser (incorrect or partial time parsing)
+
+Check this in code
+
+In the availability check:
+
+ensure you call the same transformation function (parse_sportsbet_items)
+
+don’t inspect raw Apify rows for time comparison
+
+If probe path is using raw strings while scan path uses normalized UTC, you’ll get inconsistent readiness decisions.
+
+8) Add temporary “ignore time in availability” toggle (debug only)
+
+For debugging, add a checkbox in Fix Issues (or hidden debug flag):
+
+“Availability check: ignore time matching (names only)”
+
+If enabling it suddenly shows lots of potential matches, you have confirmed time alignment as root cause.
+
+This is extremely useful to isolate problems fast.
+
+9) Tight fix for AU timezone/DST in the pre-scan path
+
+Because this is happening before scan, verify both places use the same timezone conversion:
+
+sportsbet_odds.py parser (scan)
+
+any availability probe parsing code (pre-scan)
+
+If there is duplicate parsing code anywhere, remove it and centralize in sportsbet_odds.py + time_utils.py.
+
+Rule
+
+One parser, one UTC format, used everywhere.
+
+10) Update the status labels/messages so they don’t mislead you
+
+Change messages like:
+
+“Odds empty”
+
+“No fixtures for this league window”
+
+“No matchable games”
+
+to something more precise when time mismatch is detected:
+
+New message
+
+“Fixtures and odds were both found, but event times appear misaligned (likely timezone/date parsing issue). Check Fix Issues → Pre-Scan Match Preview.”
+
+That’s the exact behavior you’re seeing.
+
+What to implement first (smallest safe batch for Replit)
+
+To avoid overloading Replit, do this in one small stage:
+
+Stage 1A (minimum)
+
+Add time_mismatch diagnosis
+
+Add soft matcher for availability checks
+
+Make Find Value Bets gating use soft matcher result
+
+Add pre-scan preview table (single league only)
+
+This gives immediate benefit without refactoring the whole app.
+
+Practical thresholds to start with
+
+Use these for availability-only soft matching:
+
+AU leagues (AFL/NRL/NBL)
+
+soft time window: 36 hours
+
+name threshold: 55
+
+Other leagues
+
+soft time window: 12 hours
+
+name threshold: 60
+
+Final scan matcher (keep stricter)
+
+keep your current tuned thresholds (AU 24h etc.) until we validate results
+
+Why this is the correct fix order
+
+You’re trying to solve two problems at once:
+
+discovery/readiness bugs
+
+model accuracy
+
+If pre-scan readiness is wrong, you’ll never know whether the model is bad or the data pairing is bad.
+
+So this fix restores trust in the pipeline inputs first.

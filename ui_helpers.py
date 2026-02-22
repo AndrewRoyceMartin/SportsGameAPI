@@ -106,6 +106,8 @@ _STATUS_LABELS = {
     "error": ("Error", "orange", "Something went wrong checking this league."),
     "odds_error": ("Odds Error", "orange", "Fixtures found but odds provider returned an error."),
     "odds_empty": ("Odds Empty", "red", "Fixtures found but odds provider returned no data."),
+    "time_mismatch": ("Time Mismatch", "orange", "Fixtures and odds found but event times are misaligned. Auto-correction will be attempted during scan."),
+    "name_mismatch": ("Name Mismatch", "orange", "Fixtures and odds found but team names don't match well between sources."),
 }
 
 
@@ -162,6 +164,13 @@ def render_availability_table(rows: List[Dict[str, Any]]) -> None:
         if sample:
             parts.append(f"e.g. {sample}")
 
+        match_preview = r.get("match_preview")
+        if match_preview and match_preview.get("issue") == "time_mismatch":
+            offset_h = match_preview.get("offset_info", {}).get("offset_hours", 0)
+            parts.append(f"⚠️ {offset_h:+.1f}h time offset detected")
+        elif match_preview and match_preview.get("issue") == "no_name_matches":
+            parts.append("⚠️ no team name matches")
+
         detail = " · ".join(parts)
 
         col1, col2, col3 = st.columns([3, 5, 3])
@@ -171,6 +180,58 @@ def render_availability_table(rows: List[Dict[str, Any]]) -> None:
             st.caption(detail)
         with col3:
             _render_availability_action(r, ready)
+
+        if match_preview and match_preview.get("preview"):
+            _render_match_preview(r["league"], match_preview)
+
+
+def _render_match_preview(league: str, preview: Dict[str, Any]) -> None:
+    import pandas as pd
+    key = f"preview_{league}"
+    with st.expander("Pre-Scan Match Preview", expanded=False):
+        issue = preview.get("issue")
+        offset_info = preview.get("offset_info", {})
+
+        mc1, mc2, mc3 = st.columns(3)
+        mc1.metric("Potential matches", preview.get("potential_matches", 0))
+        mc2.metric("Fixtures", preview.get("total_fixtures", 0))
+        mc3.metric("Odds events", preview.get("total_odds", 0))
+
+        if issue == "time_mismatch":
+            offset_h = offset_info.get("offset_hours", 0)
+            st.warning(
+                f"Fixtures and odds both exist, but event times are **{offset_h:+.1f}h** apart. "
+                f"This will be auto-corrected when you run the scan."
+            )
+        elif issue == "time_mismatch_uncertain":
+            offset_h = offset_info.get("offset_hours", 0)
+            st.info(
+                f"Slight time offset detected ({offset_h:+.1f}h) but confidence is low. "
+                f"The scan may still find matches."
+            )
+        elif issue == "no_name_matches":
+            st.warning(
+                "Team names from fixtures don't match team names from the odds source. "
+                "This may indicate different rounds or naming conventions."
+            )
+        elif issue is None:
+            st.success("Fixtures and odds align well — scan should find matches.")
+
+        rows = preview.get("preview", [])
+        if rows:
+            df = pd.DataFrame(rows)
+            col_order = ["fixture", "odds_event", "fixture_time", "odds_time", "time_gap_h", "name_score", "diagnosis"]
+            cols = [c for c in col_order if c in df.columns]
+            rename = {
+                "fixture": "Fixture",
+                "odds_event": "Odds Event",
+                "fixture_time": "Fixture Time",
+                "odds_time": "Odds Time",
+                "time_gap_h": "Gap (h)",
+                "name_score": "Name Score",
+                "diagnosis": "Status",
+            }
+            st.dataframe(df[cols].rename(columns=rename), use_container_width=True, hide_index=True)  # type: ignore[call-overload]
 
 
 def _render_availability_action(r: Dict[str, Any], ready_rows: List[Dict[str, Any]]) -> None:
@@ -188,6 +249,10 @@ def _render_availability_action(r: Dict[str, Any], ready_rows: List[Dict[str, An
             use_container_width=True,
             help="Run a quick odds probe for this league",
         )
+    elif status == "time_mismatch":
+        st.caption(":orange[Scannable — time auto-correction will apply]")
+    elif status == "name_mismatch":
+        st.caption(":orange[Team names don't match — scan may miss games]")
     elif status == "no_fixtures":
         suggest = min(lookahead * 3, 28)
         if suggest > lookahead:

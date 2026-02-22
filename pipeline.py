@@ -68,6 +68,142 @@ def preflight_availability(
     }
 
 
+def soft_match_preview(
+    fixtures: List[Game],
+    odds_events: List[Dict[str, Any]],
+    league: str = "",
+) -> Dict[str, Any]:
+    from mapper import _name_score, _parse_iso, _AU_LEAGUES
+    from time_utils import to_naive_utc
+
+    if not fixtures or not odds_events:
+        return {
+            "potential_matches": 0,
+            "total_fixtures": len(fixtures),
+            "total_odds": len(odds_events),
+            "issue": "missing_data",
+            "offset_info": None,
+            "preview": [],
+        }
+
+    is_au = league in _AU_LEAGUES
+    name_thresh = 55 if is_au else 60
+    soft_window_h = 36 if is_au else 12
+
+    pairs = []
+    seen_fx = set()
+    for fx in fixtures:
+        fx_dt = to_naive_utc(fx.start_time_utc)
+        if fx_dt is None:
+            continue
+        fx_key = (fx.home, fx.away)
+        if fx_key in seen_fx:
+            continue
+
+        best_pair = None
+        best_name = 0
+        for og in odds_events:
+            og_home = (og.get("homeTeam") or {}).get("mediumName", "")
+            og_away = (og.get("awayTeam") or {}).get("mediumName", "")
+            og_dt = _parse_iso(og.get("scheduledTime", ""))
+
+            home_sc = _name_score(fx.home, og_home)
+            away_sc = _name_score(fx.away, og_away)
+            avg = (home_sc + away_sc) / 2
+            home_flip = _name_score(fx.home, og_away)
+            away_flip = _name_score(fx.away, og_home)
+            avg_flip = (home_flip + away_flip) / 2
+            best = max(avg, avg_flip)
+
+            if best >= name_thresh and best > best_name:
+                delta_h = None
+                if og_dt is not None and fx_dt is not None:
+                    delta_h = (og_dt - fx_dt).total_seconds() / 3600
+                best_name = best
+                best_pair = {
+                    "fixture": f"{fx.home} vs {fx.away}",
+                    "odds": f"{og_home} vs {og_away}",
+                    "fx_time": str(fx_dt)[:19] if fx_dt else "?",
+                    "odds_time": str(og_dt)[:19] if og_dt else "?",
+                    "delta_h": round(delta_h, 2) if delta_h is not None else None,
+                    "name_score": best,
+                }
+
+        if best_pair:
+            pairs.append(best_pair)
+            seen_fx.add(fx_key)
+
+    preview = []
+    for p in pairs:
+        preview.append({
+            "fixture": p["fixture"],
+            "odds_event": p["odds"],
+            "fixture_time": p["fx_time"],
+            "odds_time": p["odds_time"],
+            "time_gap_h": p["delta_h"],
+            "name_score": p["name_score"],
+            "diagnosis": _diagnose_pair(p),
+        })
+
+    deltas_with_time = [p["delta_h"] for p in pairs if p["delta_h"] is not None]
+    if deltas_with_time:
+        deltas_with_time.sort()
+        median_offset = deltas_with_time[len(deltas_with_time) // 2]
+        within_2h = sum(1 for d in deltas_with_time if abs(d - median_offset) <= 2)
+        consistency = within_2h / len(deltas_with_time)
+    else:
+        median_offset = 0
+        consistency = 0
+
+    offset_info = {
+        "offset_hours": round(median_offset, 2),
+        "consistency": round(consistency, 2),
+        "pairs_checked": len(pairs),
+    }
+
+    abs_offset = abs(median_offset)
+    time_mismatched = sum(1 for d in deltas_with_time if abs(d) > soft_window_h)
+
+    if len(pairs) == 0:
+        issue = "no_name_matches"
+    elif abs_offset > 3 and consistency >= 0.5:
+        issue = "time_mismatch"
+    elif abs_offset > 1.5 and len(deltas_with_time) >= 2:
+        issue = "time_mismatch_uncertain"
+    elif time_mismatched > 0 and time_mismatched >= len(deltas_with_time) * 0.5:
+        issue = "time_mismatch"
+    else:
+        issue = None
+
+    return {
+        "potential_matches": len(pairs),
+        "total_fixtures": len(fixtures),
+        "total_odds": len(odds_events),
+        "issue": issue,
+        "offset_info": offset_info,
+        "preview": preview[:15],
+    }
+
+
+def _diagnose_pair(pair: Dict[str, Any]) -> str:
+    delta_raw = pair.get("delta_h")
+    if delta_raw is None:
+        return "No time data"
+    delta = abs(delta_raw)
+    name_sc = pair.get("name_score", 0)
+    if name_sc >= 70 and delta <= 4:
+        return "OK"
+    if name_sc >= 70 and delta <= 12:
+        return "Slight time gap"
+    if name_sc >= 70 and delta > 12:
+        return "Time mismatch"
+    if name_sc >= 55 and delta <= 6:
+        return "Weak name, close time"
+    if name_sc >= 55:
+        return "Weak name match"
+    return "Poor match"
+
+
 def _cached_odds_probe(league_key: str, harvest_key: str, lookahead_days: int) -> Dict[str, Any]:
     return probe_odds_provider(
         league_key,
@@ -95,11 +231,15 @@ def preflight_with_odds_probe(
     import time as _t
     cached = st.session_state.get(cache_key)
     ttl = 300
+    odds_events: List[Dict[str, Any]] = []
     if cached and (_t.time() - cached.get("_ts", 0)) < ttl:
         probe = cached
+        odds_events = cached.get("_events", [])
     else:
         probe = _cached_odds_probe(league_key, harvest_key, result["lookahead_days"])
+        odds_events = probe.pop("events", [])
         probe["_ts"] = _t.time()
+        probe["_events"] = odds_events
         st.session_state[cache_key] = probe
 
     result["odds_provider"] = probe["provider"]
@@ -118,6 +258,25 @@ def preflight_with_odds_probe(
         result["odds_status"] = "empty"
         if result["status"] == "ready":
             result["status"] = "odds_empty"
+
+    fixtures: List[Game] = []
+    if result.get("fixtures_count", 0) > 0 and odds_events:
+        try:
+            today = date.today()
+            lookahead = result.get("lookahead_days", 7)
+            date_to = today + timedelta(days=lookahead)
+            fixtures = get_upcoming_games(league=league_key, date_to=date_to)
+        except Exception:
+            fixtures = []
+
+    if fixtures and odds_events:
+        match_preview = soft_match_preview(fixtures, odds_events, league=league_key)
+        result["match_preview"] = match_preview
+
+        if match_preview.get("issue") == "time_mismatch" and result["status"] in ("ready",):
+            result["status"] = "time_mismatch"
+        elif match_preview.get("issue") == "no_name_matches" and result["status"] in ("ready",):
+            result["status"] = "name_mismatch"
 
     return result
 
