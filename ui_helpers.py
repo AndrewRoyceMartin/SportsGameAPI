@@ -785,6 +785,62 @@ def show_unmatched_samples(
             )
 
 
+def show_match_reject_diagnostics(
+    diagnostics: List[Dict[str, Any]],
+) -> None:
+    if not diagnostics:
+        return
+    with st.expander(f"Near-match candidates ({len(diagnostics)} unmatched fixtures)", expanded=False):
+        st.caption(
+            "Shows why each unmatched fixture failed to pair with an odds event. "
+            "Helps identify name alias gaps, time mismatches, or coverage issues."
+        )
+        rows = []
+        for d in diagnostics[:20]:
+            row: Dict[str, Any] = {
+                "Fixture": d.get("fixture", ""),
+                "Fixture Time": d.get("fixture_time", ""),
+                "Reject Reason": d.get("reject_reason", "Unknown"),
+            }
+            if d.get("nearest_time_reject"):
+                tr = d["nearest_time_reject"]
+                row["Nearest Odds"] = f"{tr.get('odds_home', '')} vs {tr.get('odds_away', '')}"
+                row["Time Gap"] = f"{tr['diff_h']:.1f}h (limit {tr['window']}h)"
+            elif d.get("nearest_au_reject"):
+                ar = d["nearest_au_reject"]
+                row["Nearest Odds"] = f"{ar.get('odds_home', '')} vs {ar.get('odds_away', '')}"
+                row["Name Score"] = f"{ar['name_score']:.0f}"
+                row["Time Gap"] = f"{ar.get('diff_h', '?')}h"
+            elif d.get("nearest_name_reject"):
+                nr = d["nearest_name_reject"]
+                row["Nearest Odds"] = f"{nr.get('odds_home', '')} vs {nr.get('odds_away', '')}"
+                row["Name Score"] = f"{nr['name_score']:.0f} (need {nr['threshold']})"
+                if nr.get("diff_h") is not None:
+                    row["Time Gap"] = f"{nr['diff_h']:.1f}h"
+            rows.append(row)
+
+        if rows:
+            df = pd.DataFrame(rows)
+            st.dataframe(df, use_container_width=True, hide_index=True)
+
+        time_rejects = sum(1 for d in diagnostics if d.get("nearest_time_reject"))
+        name_rejects = sum(1 for d in diagnostics if d.get("nearest_name_reject"))
+        au_rejects = sum(1 for d in diagnostics if d.get("nearest_au_reject"))
+        no_cand = sum(1 for d in diagnostics if "No candidates" in d.get("reject_reason", ""))
+
+        parts = []
+        if time_rejects:
+            parts.append(f"{time_rejects} rejected by time window")
+        if name_rejects:
+            parts.append(f"{name_rejects} rejected by name score")
+        if au_rejects:
+            parts.append(f"{au_rejects} rejected by AU tier rules")
+        if no_cand:
+            parts.append(f"{no_cand} had no candidates at all")
+        if parts:
+            st.caption("Summary: " + ", ".join(parts))
+
+
 def show_harvest_games(harvest_games: List[Dict[str, Any]]) -> None:
     with st.expander("Scheduled games from sportsbooks"):
         for g in harvest_games:

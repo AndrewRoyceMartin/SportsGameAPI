@@ -1,0 +1,350 @@
+Step 1B: Fix and verify time matching before scan
+
+We’ll do two things:
+
+Harden Sportsbet time parsing (sportsbet_odds.py) so AU local times are converted to UTC correctly.
+
+Add matcher debug reasons (mapper.py) so you can see whether candidates are being rejected due to time window or name score.
+
+1) Patch sportsbet_odds.py time parsing (Australia/Sydney → UTC)
+What this solves
+
+Sportsbet strings like:
+
+Thursday, 5 Mar 08:30
+
+07:00
+
+are local display times. If they’re parsed as UTC (or converted twice), matching fails.
+
+Replit instructions
+A. Add imports at top of sportsbet_odds.py
+
+Make sure these imports exist:
+
+import re
+from datetime import datetime, date, timedelta, timezone
+from zoneinfo import ZoneInfo
+
+If timezone or ZoneInfo are missing, add them.
+
+B. Replace _parse_sportsbet_datetime() with this version
+
+This version handles:
+
+full strings (Friday, 6 Mar 09:05)
+
+time-only strings (07:00)
+
+AU timezone conversion using Australia/Sydney
+
+“next occurrence” logic for time-only entries
+
+def _parse_sportsbet_datetime(event_time: str) -> Optional[datetime]:
+    """
+    Parse Sportsbet display times into UTC-naive datetime (matching the rest of the app).
+
+    Supported examples:
+      - "Thursday, 5 Mar 08:30"
+      - "Friday, 6 Mar 09:05"
+      - "07:00"   (assumed nearest upcoming occurrence in Australia/Sydney)
+    """
+    if not event_time or not isinstance(event_time, str):
+        return None
+
+    s = " ".join(str(event_time).replace("\xa0", " ").split()).strip()
+    if not s:
+        return None
+
+    syd = ZoneInfo("Australia/Sydney")
+    now_local = datetime.now(syd)
+
+    # Case 1: full form e.g. "Thursday, 5 Mar 08:30"
+    # We ignore weekday text and parse the date/time portion.
+    m_full = re.search(r"(?:[A-Za-z]+,\s*)?(\d{1,2})\s+([A-Za-z]{3})\s+(\d{1,2}:\d{2})", s)
+    if m_full:
+        day_s, mon_s, hm_s = m_full.groups()
+        # Try current year first, then next year if it looks far in the past.
+        for year in (now_local.year, now_local.year + 1):
+            try:
+                local_dt = datetime.strptime(f"{day_s} {mon_s} {year} {hm_s}", "%d %b %Y %H:%M")
+                local_dt = local_dt.replace(tzinfo=syd)
+
+                # If parsed date is too far in the past relative to now, try next year
+                # (helps around year boundaries).
+                if local_dt < (now_local - timedelta(days=45)) and year == now_local.year:
+                    continue
+
+                utc_dt = local_dt.astimezone(timezone.utc).replace(tzinfo=None)
+                return utc_dt
+            except ValueError:
+                continue
+        return None
+
+    # Case 2: time-only form e.g. "07:00"
+    m_time = re.fullmatch(r"(\d{1,2}):(\d{2})", s)
+    if m_time:
+        hh = int(m_time.group(1))
+        mm = int(m_time.group(2))
+        if hh > 23 or mm > 59:
+            return None
+
+        candidate_local = now_local.replace(hour=hh, minute=mm, second=0, microsecond=0)
+
+        # If already passed by more than a small grace window, roll to next day
+        if candidate_local < (now_local - timedelta(minutes=10)):
+            candidate_local = candidate_local + timedelta(days=1)
+
+        utc_dt = candidate_local.astimezone(timezone.utc).replace(tzinfo=None)
+        return utc_dt
+
+    return None
+C. Quick parser sanity check in Replit shell
+
+Run this before testing the app:
+
+python - << 'PY'
+from sportsbet_odds import _parse_sportsbet_datetime
+
+tests = [
+    "Thursday, 5 Mar 08:30",
+    "Friday, 6 Mar 09:05",
+    "07:00",
+    "19:30",
+]
+
+for t in tests:
+    print(t, "->", _parse_sportsbet_datetime(t))
+PY
+
+You want real UTC times (not None).
+
+2) Add matcher debug visibility in mapper.py
+
+This helps confirm why games don’t match:
+
+time delta too large
+
+names too weak
+
+best candidate was close but below threshold
+
+Replit instructions
+A. Add a debug flag near your constants in mapper.py
+
+Add this near the top (under thresholds/constants):
+
+DEBUG_MATCHING = False
+DEBUG_MATCHING_MAX_FIXTURES = 8
+
+You can flip it to True temporarily.
+
+B. Add this helper in mapper.py (below _parse_iso() is fine)
+def _dbg(msg: str) -> None:
+    if DEBUG_MATCHING:
+        print(f"[mapper] {msg}")
+C. Replace match_games_to_odds(...) with this instrumented version
+
+This preserves your AU thresholds and adds rejection diagnostics.
+
+def match_games_to_odds(
+    fixtures: list,
+    harvest_games: List[Dict[str, Any]],
+    time_window_hours: float = TIME_WINDOW_HOURS,
+    fuzzy_threshold: int = FUZZY_THRESHOLD,
+    league: str = "",
+) -> List[Dict[str, Any]]:
+    is_au = league in _AU_LEAGUES
+    tw = _AU_TIME_WINDOW_HOURS if is_au else time_window_hours
+    ft = _AU_FUZZY_THRESHOLD if is_au else fuzzy_threshold
+    no_time_ft = _AU_NAME_ONLY_THRESHOLD if is_au else NAME_ONLY_THRESHOLD
+
+    _dbg(
+        f"match start league={league or '-'} is_au={is_au} "
+        f"fixtures={len(fixtures)} odds={len(harvest_games)} "
+        f"time_window={tw}h fuzzy={ft} no_time={no_time_ft}"
+    )
+
+    matched: List[Dict[str, Any]] = []
+
+    for i, fx in enumerate(fixtures):
+        fx_home = fx.home
+        fx_away = fx.away
+        fx_dt = fx.start_time_utc
+
+        best_score = 0
+        best_odds_game = None
+
+        # debug bookkeeping
+        best_rejected_time = None  # (diff_h, og_home, og_away, og_dt)
+        best_rejected_name = None  # (score, threshold, og_home, og_away, og_dt, diff_h)
+        considered = 0
+
+        for og in harvest_games:
+            og_home = og.get("homeTeam", {}).get("mediumName", "")
+            og_away = og.get("awayTeam", {}).get("mediumName", "")
+            og_time_str = og.get("scheduledTime", "")
+            og_dt = _parse_iso(og_time_str)
+            considered += 1
+
+            both_have_time = fx_dt is not None and og_dt is not None
+            diff_h = None
+
+            if both_have_time:
+                diff_sec = abs((fx_dt - og_dt).total_seconds())
+                diff_h = diff_sec / 3600.0
+                if diff_sec > tw * 3600:
+                    if best_rejected_time is None or diff_h < best_rejected_time[0]:
+                        best_rejected_time = (diff_h, og_home, og_away, og_dt)
+                    continue
+
+            home_sc = _name_score(fx_home, og_home)
+            away_sc = _name_score(fx_away, og_away)
+            avg_normal = (home_sc + away_sc) / 2
+
+            home_sc_flip = _name_score(fx_home, og_away)
+            away_sc_flip = _name_score(fx_away, og_home)
+            avg_flipped = (home_sc_flip + away_sc_flip) / 2
+
+            avg_score = max(avg_normal, avg_flipped)
+            threshold = ft if both_have_time else no_time_ft
+
+            if avg_score < threshold:
+                if best_rejected_name is None or avg_score > best_rejected_name[0]:
+                    best_rejected_name = (
+                        avg_score,
+                        threshold,
+                        og_home,
+                        og_away,
+                        og_dt,
+                        diff_h,
+                    )
+                continue
+
+            if avg_score > best_score:
+                best_score = avg_score
+                best_odds_game = og
+
+        if best_odds_game:
+            matched.append(
+                {
+                    "fixture": fx,
+                    "odds_game": best_odds_game,
+                    "match_confidence": best_score,
+                }
+            )
+            if DEBUG_MATCHING and i < DEBUG_MATCHING_MAX_FIXTURES:
+                og = best_odds_game
+                _dbg(
+                    f"MATCH fx='{fx_home} vs {fx_away}' t={fx_dt} "
+                    f"-> og='{og.get('homeTeam', {}).get('mediumName', '')} vs {og.get('awayTeam', {}).get('mediumName', '')}' "
+                    f"t={og.get('scheduledTime', '')} score={best_score}"
+                )
+        else:
+            if DEBUG_MATCHING and i < DEBUG_MATCHING_MAX_FIXTURES:
+                _dbg(f"NO MATCH fx='{fx_home} vs {fx_away}' t={fx_dt} considered={considered}")
+                if best_rejected_time:
+                    d, h, a, t = best_rejected_time
+                    _dbg(f"  nearest-time reject: {h} vs {a} t={t} diff={d:.2f}h (window {tw}h)")
+                if best_rejected_name:
+                    sc, thr, h, a, t, d = best_rejected_name
+                    d_txt = "n/a" if d is None else f"{d:.2f}h"
+                    _dbg(f"  best-name reject: {h} vs {a} t={t} diff={d_txt} score={sc:.1f} (< {thr})")
+
+    _dbg(f"match end matched={len(matched)} / {len(fixtures)}")
+    return matched
+3) Run a controlled debug match (AFL first)
+
+Temporarily set in mapper.py:
+
+DEBUG_MATCHING = True
+
+Then run your normal AFL flow (or your quick pipeline command) and watch the Replit console.
+
+What you’re looking for
+
+If you see many:
+
+nearest-time reject ... diff=11.00h (window 6h) → time window issue
+
+best-name reject ... score=52 (<55) → alias/name issue
+
+After your AU window = 24h, same-game rejections should not be time-based unless parser is wrong.
+
+4) Verify availability check uses same date window as scan (important)
+
+Because you said the issue happens before scan.
+
+Replit grep checks
+
+Run:
+
+git grep -n "Check Availability" app.py
+git grep -n "lookahead" app.py
+git grep -n "get_upcoming_games(" app.py
+git grep -n "date_to" app.py
+What to confirm
+
+For a single league availability probe, it should:
+
+use the same league
+
+use the same lookahead logic as scan (AFL often 21d)
+
+not silently default to 7d if scan later uses 21d
+
+If availability is using 7d and scan uses 21d, you’ll see “not ready” even though real matches exist.
+
+5) Quick test sequence after patch (fast)
+
+Run these in order:
+
+A. Fixture availability
+python - << 'PY'
+from datetime import date, timedelta
+from stats_provider import get_upcoming_games
+
+print("AFL 7d ", len(get_upcoming_games("AFL")))
+print("AFL 21d", len(get_upcoming_games("AFL", date_from=date.today(), date_to=date.today()+timedelta(days=21))))
+print("NRL 7d ", len(get_upcoming_games("NRL")))
+print("NBL 7d ", len(get_upcoming_games("NBL")))
+PY
+B. Parser output sanity
+python - << 'PY'
+from sportsbet_odds import _parse_sportsbet_datetime
+for s in ["Thursday, 5 Mar 08:30", "Friday, 6 Mar 09:05", "07:00", "19:30"]:
+    print(s, "->", _parse_sportsbet_datetime(s))
+PY
+C. Run app pipeline / scan and inspect console logs
+
+Turn on DEBUG_MATCHING = True and run an AFL or NRL scan.
+
+6) What this changes for prediction accuracy (important)
+
+Right now, low “real-world performance” can be caused by selection errors, not just model weakness:
+
+Valid games fail to match → fewer candidates
+
+The remaining matched games may be a biased subset
+
+“Best bets” aren’t actually the best available bets
+
+Fixing time parsing + match diagnostics is the highest-value next step before deeper model upgrades.
+
+7) After this, Step 1C (next)
+
+Once this is in and tested, next step should be:
+
+Step 1C: Add a pre-scan “near-match fallback” panel
+
+When exact matching fails, show:
+
+top 3 likely odds events per fixture
+
+time delta
+
+name scores
+
+reject reason
+
+That will make debugging much faster and help us systematically improve aliases + matching rules.

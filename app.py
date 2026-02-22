@@ -25,7 +25,7 @@ from pipeline import (
     count_games_with_odds,
     harvest_date_range,
     fetch_fixtures,
-    match_fixtures_to_odds,
+    match_fixtures_to_odds, get_match_diagnostics,
     compute_values,
     dedup_best_side,
     get_unmatched,
@@ -48,6 +48,7 @@ from ui_helpers import (
     render_saved_picks,
     explain_empty_run,
     show_unmatched_samples,
+    show_match_reject_diagnostics,
     render_pick_cards,
     attach_quality,
     render_backtest_results,
@@ -875,6 +876,8 @@ def main():
                     run_data.get("unmatched_fx", []),
                     run_data.get("unmatched_odds", []),
                 )
+            if run_data.get("match_reject_diagnostics"):
+                show_match_reject_diagnostics(run_data["match_reject_diagnostics"])
             if run_data.get("harvest_games"):
                 show_harvest_games(run_data["harvest_games"])
             if run_data.get("matched_list") and not run_data.get("value_bets"):
@@ -1287,6 +1290,7 @@ def _run_pipeline(
         matched = match_fixtures_to_odds(upcoming, odds_for_matching, league=league_label)
         run_data["matched"] = len(matched)
         run_data["matched_list"] = matched
+        run_data["match_reject_diagnostics"] = get_match_diagnostics()
         if matched:
             run_data["time_deltas"] = summarize_match_time_deltas(matched)
 

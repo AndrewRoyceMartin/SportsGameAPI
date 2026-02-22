@@ -7,7 +7,11 @@ from typing import Any, Dict, List, Optional
 
 from thefuzz import fuzz
 
+import logging as _logging
+
 from time_utils import parse_iso_utc, to_naive_utc
+
+_mapper_log = _logging.getLogger(__name__)
 
 TIME_WINDOW_HOURS = 4
 FUZZY_THRESHOLD = 60
@@ -300,7 +304,13 @@ def match_games_to_odds(
     ft = _AU_FUZZY_THRESHOLD if is_au else fuzzy_threshold
     no_time_ft = _AU_NAME_ONLY_THRESHOLD if is_au else NAME_ONLY_THRESHOLD
 
+    _mapper_log.info(
+        "match start league=%s is_au=%s fixtures=%d odds=%d tw=%sh ft=%s no_time_ft=%s",
+        league or "-", is_au, len(fixtures), len(harvest_games), tw, ft, no_time_ft,
+    )
+
     matched: List[Dict[str, Any]] = []
+    unmatched_diagnostics: List[Dict[str, Any]] = []
 
     for fx in fixtures:
         fx_home = fx.home
@@ -311,11 +321,17 @@ def match_games_to_odds(
         best_odds_game = None
         best_delta_h: Optional[float] = None
 
+        best_rejected_time: Optional[Dict[str, Any]] = None
+        best_rejected_name: Optional[Dict[str, Any]] = None
+        best_rejected_au_tier: Optional[Dict[str, Any]] = None
+        considered = 0
+
         for og in harvest_games:
             og_home = og.get("homeTeam", {}).get("mediumName", "")
             og_away = og.get("awayTeam", {}).get("mediumName", "")
             og_time_str = og.get("scheduledTime", "")
             og_dt = _parse_iso(og_time_str)
+            considered += 1
 
             both_have_time = fx_dt is not None and og_dt is not None
             if not both_have_time and league in _TEAM_SPORT_LEAGUES:
@@ -324,6 +340,14 @@ def match_games_to_odds(
             if both_have_time and fx_dt is not None and og_dt is not None:
                 diff_h = abs((fx_dt - og_dt).total_seconds()) / 3600
                 if diff_h > tw:
+                    if best_rejected_time is None or diff_h < best_rejected_time["diff_h"]:
+                        best_rejected_time = {
+                            "diff_h": round(diff_h, 2),
+                            "window": tw,
+                            "odds_home": og_home,
+                            "odds_away": og_away,
+                            "odds_time": og_time_str,
+                        }
                     continue
 
             home_sc = _name_score(fx_home, og_home)
@@ -346,9 +370,28 @@ def match_games_to_odds(
                 elif avg_score >= ft and diff_h <= 6:
                     pass
                 else:
+                    if best_rejected_au_tier is None or avg_score > best_rejected_au_tier["name_score"]:
+                        best_rejected_au_tier = {
+                            "name_score": round(avg_score, 1),
+                            "diff_h": round(diff_h, 2) if diff_h else None,
+                            "odds_home": og_home,
+                            "odds_away": og_away,
+                            "reason": f"AU tier: score {avg_score:.0f} needs diff<={'6' if avg_score < 70 else '12' if avg_score < 85 else '24'}h, got {diff_h:.1f}h",
+                        }
                     continue
 
-            if avg_score >= threshold and avg_score > best_score:
+            if avg_score < threshold:
+                if best_rejected_name is None or avg_score > best_rejected_name["name_score"]:
+                    best_rejected_name = {
+                        "name_score": round(avg_score, 1),
+                        "threshold": threshold,
+                        "diff_h": round(diff_h, 2) if diff_h is not None else None,
+                        "odds_home": og_home,
+                        "odds_away": og_away,
+                    }
+                continue
+
+            if avg_score > best_score:
                 best_score = avg_score
                 best_odds_game = og
                 best_delta_h = diff_h
@@ -362,5 +405,46 @@ def match_games_to_odds(
                     "time_delta_hours": best_delta_h,
                 }
             )
+            _mapper_log.debug(
+                "MATCH '%s vs %s' -> '%s vs %s' score=%s delta=%s",
+                fx_home, fx_away,
+                best_odds_game.get("homeTeam", {}).get("mediumName", ""),
+                best_odds_game.get("awayTeam", {}).get("mediumName", ""),
+                best_score, f"{best_delta_h:.1f}h" if best_delta_h is not None else "n/a",
+            )
+        else:
+            diag: Dict[str, Any] = {
+                "fixture": f"{fx_home} vs {fx_away}",
+                "fixture_time": str(fx_dt)[:19] if fx_dt else None,
+                "considered": considered,
+            }
+            if best_rejected_time:
+                diag["nearest_time_reject"] = best_rejected_time
+                diag["reject_reason"] = f"Time: nearest odds {best_rejected_time['diff_h']:.1f}h away (window {tw}h)"
+            elif best_rejected_au_tier:
+                diag["nearest_au_reject"] = best_rejected_au_tier
+                diag["reject_reason"] = best_rejected_au_tier["reason"]
+            elif best_rejected_name:
+                diag["nearest_name_reject"] = best_rejected_name
+                diag["reject_reason"] = f"Name: best score {best_rejected_name['name_score']:.0f} < threshold {best_rejected_name['threshold']}"
+            else:
+                diag["reject_reason"] = "No candidates (no time data or empty odds)"
+            unmatched_diagnostics.append(diag)
+            _mapper_log.info(
+                "NO MATCH '%s vs %s' t=%s reason=%s",
+                fx_home, fx_away, fx_dt, diag.get("reject_reason", "unknown"),
+            )
+
+    _mapper_log.info("match end matched=%d/%d", len(matched), len(fixtures))
+
+    _last_match_diagnostics.clear()
+    _last_match_diagnostics.extend(unmatched_diagnostics)
 
     return matched
+
+
+_last_match_diagnostics: List[Dict[str, Any]] = []
+
+
+def get_match_diagnostics() -> List[Dict[str, Any]]:
+    return list(_last_match_diagnostics)
