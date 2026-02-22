@@ -213,17 +213,20 @@ def main():
         _CONN_CACHE_KEY = "_conn_status"
         _CONN_TTL = 300
         import time as _time
+        from datetime import datetime as _dt
 
         def _get_conn_status():
             cached = st.session_state.get(_CONN_CACHE_KEY)
             if cached and (_time.time() - cached["ts"]) < _CONN_TTL:
-                return cached["results"]
+                return cached["results"], cached["ts"]
             results = check_all()
-            st.session_state[_CONN_CACHE_KEY] = {"ts": _time.time(), "results": results}
-            return results
+            now = _time.time()
+            st.session_state[_CONN_CACHE_KEY] = {"ts": now, "results": results}
+            return results, now
 
-        conn_results = _get_conn_status()
+        conn_results, checked_ts = _get_conn_status()
         all_ok = all(c.ok for c in conn_results)
+        checked_dt = _dt.utcfromtimestamp(checked_ts).strftime("%H:%M:%S UTC")
 
         with st.container():
             st.markdown(
@@ -234,6 +237,7 @@ def main():
                 latency = f" ({c.latency_ms}ms)" if c.latency_ms is not None else ""
                 detail = f" — {c.detail}" if c.detail and c.detail != "OK" else ""
                 st.caption(f"{icon} **{c.name}**{latency}{detail}")
+            st.caption(f"Checked at {checked_dt}")
             if st.button("Refresh", key="conn_refresh", use_container_width=True):
                 st.session_state.pop(_CONN_CACHE_KEY, None)
                 st.rerun()
