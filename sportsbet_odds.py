@@ -72,9 +72,7 @@ def _parse_sportsbet_datetime(event_time: str) -> Optional[datetime]:
                         parsed = parsed.replace(year=now_utc.year + 1)
                     elif (parsed - naive_now).days > 330:
                         parsed = parsed.replace(year=now_utc.year - 1)
-                local_dt = parsed.replace(tzinfo=_SYDNEY_TZ)
-                utc_dt = local_dt.astimezone(timezone.utc).replace(tzinfo=None)
-                return utc_dt
+                return parsed
             except ValueError:
                 continue
 

@@ -1,0 +1,170 @@
+Step 1 goal
+
+Make sure all times are normalized to UTC and compared consistently before matching, especially for AU leagues (AFL/NRL/NBL).
+
+Replit instructions (safe + fast)
+1) Confirm the key paths are in place
+
+Run these grep checks in Replit shell:
+
+git grep -n "_AU_TIME_WINDOW_HOURS" mapper.py
+git grep -n "match_games_to_odds" mapper.py
+git grep -n "_parse_sportsbet_datetime" sportsbet_odds.py
+git grep -n "scheduledTime" sportsbet_odds.py
+git grep -n "start_time_utc" stats_provider.py
+git grep -n "timezone" stats_provider.py
+
+You want to see:
+
+AU window set wider (you previously moved to 24h)
+
+Sportsbet parser converting local AU display times into a UTC scheduledTime
+
+Fixtures coming through as start_time_utc
+
+Matcher comparing UTC vs UTC
+
+2) Add a one-off debug script to inspect actual time deltas before matching
+
+Create a temporary file debug_time_match.py in Replit:
+
+from datetime import date, timedelta
+from pprint import pprint
+
+from stats_provider import get_upcoming_games
+from odds_fetch import fetch_odds_games  # adjust import if function name differs
+from mapper import _parse_iso  # if private import is okay; otherwise duplicate parser
+
+LEAGUE = "AFL"  # change to NRL / NBL
+
+def main():
+    # Use longer lookahead for AFL preseason/round 1
+    fixtures = get_upcoming_games(
+        LEAGUE,
+        date_from=date.today(),
+        date_to=date.today() + timedelta(days=21),
+    )
+    odds_games = fetch_odds_games(LEAGUE)  # adjust if your function signature differs
+
+    print(f"\nLeague: {LEAGUE}")
+    print(f"Fixtures: {len(fixtures)}")
+    print(f"Odds games: {len(odds_games)}\n")
+
+    # Show first few raw times
+    print("=== FIXTURES (first 10) ===")
+    for fx in fixtures[:10]:
+        print(f"{fx.home} vs {fx.away} | fx_utc={fx.start_time_utc} | league={getattr(fx, 'league', '')}")
+
+    print("\n=== ODDS (first 10) ===")
+    for og in odds_games[:10]:
+        h = og.get("homeTeam", {}).get("mediumName", "")
+        a = og.get("awayTeam", {}).get("mediumName", "")
+        t = og.get("scheduledTime", "")
+        print(f"{h} vs {a} | og_utc={t}")
+
+    print("\n=== CLOSEST TIME DELTAS (top examples) ===")
+    for fx in fixtures[:10]:
+        best = None
+        for og in odds_games:
+            h = og.get("homeTeam", {}).get("mediumName", "")
+            a = og.get("awayTeam", {}).get("mediumName", "")
+            og_dt = _parse_iso(og.get("scheduledTime", ""))
+            if fx.start_time_utc is None or og_dt is None:
+                continue
+            diff_h = abs((fx.start_time_utc - og_dt).total_seconds()) / 3600.0
+            # crude name overlap signal
+            names = f"{fx.home.lower()} {fx.away.lower()}"
+            odds_names = f"{h.lower()} {a.lower()}"
+            overlap = sum(1 for token in names.split() if token in odds_names)
+            cand = (diff_h, overlap, h, a, og.get("scheduledTime", ""))
+            if best is None or cand[0] < best[0]:
+                best = cand
+        if best:
+            print(
+                f"{fx.home} vs {fx.away} | "
+                f"best_delta={best[0]:.2f}h | overlap={best[1]} | "
+                f"odds={best[2]} vs {best[3]} | {best[4]}"
+            )
+
+if __name__ == "__main__":
+    main()
+
+Run it:
+
+python debug_time_match.py
+3) What to look for in output (important)
+
+You are checking for these patterns:
+
+✅ Good
+
+Same real game appears with a delta like:
+
+0h–3h (ideal)
+
+8h–12h (common if one source is local AU and one is UTC-normalized differently)
+
+within your AU window (24h)
+
+❌ Bad (actual bug indicators)
+
+Same matchup names but delta is ~24h+, 48h, or negative day shift
+
+Sportsbet parsed times always off by a consistent offset (e.g., +11h or -11h)
+
+Odds scheduledTime empty for all AU games
+
+Fixture start_time_utc naive/local while odds time is true UTC string
+
+If the mismatch still exists, likely root causes (and fix order)
+A) Sportsbet parser is attaching wrong timezone when parsing "Friday, 6 Mar 09:05"
+
+Most common issue:
+
+treating AU local time as UTC directly
+
+or converting twice
+
+Fix rule:
+
+Parse as Australia/Sydney local time
+
+then convert to UTC once
+
+then emit YYYY-mm-ddTHH:MM:SSZ
+
+If you want, next step I’ll give you the exact zoneinfo-based parser replacement for sportsbet_odds.py.
+
+B) Fixture source returns local time but your code labels it as UTC
+
+If stats_provider.py is doing something like:
+
+parsing a local timestamp and assigning it to start_time_utc without converting
+
+then matching breaks before scan.
+
+Fix rule:
+
+If source is already UTC → store as UTC
+
+If source is local/unknown → explicitly localize then convert to UTC
+
+C) Pre-scan availability uses tighter/different date window than scan
+
+You mentioned mismatch happens before clicking scan. That suggests the availability check may be:
+
+probing fixtures with one lookahead
+
+probing odds with another date basis
+
+or not using the same league-specific lookahead (AFL 21d)
+
+Check this in app.py / availability helper:
+
+same league
+
+same date_from/date_to logic
+
+same AU preseason lookahead behavior
+
+same provider route as the actual scan
