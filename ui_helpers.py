@@ -493,9 +493,15 @@ def _get_away(x: Dict[str, Any]) -> str:
 def _diagnose_unmatched(
     unmatched_fixtures: List[Dict[str, Any]],
     unmatched_odds: List[Dict[str, Any]],
-) -> str:
+) -> Dict[str, Any]:
+    result: Dict[str, Any] = {
+        "reason": "coverage_gap",
+        "best_name_score": 0,
+        "best_time_diff_hours": None,
+        "best_pair": None,
+    }
     if not unmatched_fixtures or not unmatched_odds:
-        return "coverage_gap"
+        return result
 
     smaller, larger = (unmatched_odds, unmatched_fixtures) if len(unmatched_odds) <= len(unmatched_fixtures) else (unmatched_fixtures, unmatched_odds)
     smaller_sample = smaller[:30]
@@ -503,6 +509,7 @@ def _diagnose_unmatched(
 
     best_min = 0
     best_time_diff_hours = None
+    best_pair = None
     for s_item in smaller_sample:
         s_h, s_a = _get_home(s_item), _get_away(s_item)
         s_dt = _parse_iso(s_item.get("time", ""))
@@ -525,10 +532,17 @@ def _diagnose_unmatched(
                     best_time_diff_hours = abs((s_dt - l_dt).total_seconds()) / 3600
                 else:
                     best_time_diff_hours = None
+                best_pair = (s_h, s_a, l_h, l_a)
 
-    if best_min >= 55 and (best_time_diff_hours is None or best_time_diff_hours <= 36):
-        return "naming"
-    return "coverage_gap"
+    reason = "naming" if best_min >= 55 and (best_time_diff_hours is None or best_time_diff_hours <= 36) else "coverage_gap"
+    if best_min >= 55 and best_time_diff_hours is not None and best_time_diff_hours > 36:
+        reason = "time_mismatch"
+
+    result["reason"] = reason
+    result["best_name_score"] = best_min
+    result["best_time_diff_hours"] = best_time_diff_hours
+    result["best_pair"] = best_pair
+    return result
 
 
 def explain_empty_run(
@@ -594,9 +608,10 @@ def explain_empty_run(
         st.markdown("- Extend the lookahead window in Advanced settings")
         st.markdown("- The schedule may not be published yet for this window")
     elif matched is not None and matched == 0:
-        reason = _diagnose_unmatched(
+        diag = _diagnose_unmatched(
             unmatched_fixtures or [], unmatched_odds or []
         )
+        reason = diag["reason"]
         if reason == "naming":
             st.warning(
                 f"Found {fixtures_fetched} fixture(s) and {odds_fetched} odds event(s), "
@@ -605,6 +620,16 @@ def explain_empty_run(
             st.markdown("**What to try:**")
             st.markdown("- Check the Fix Issues tab for unmatched name details")
             st.markdown("- Team name aliases may need updating")
+        elif reason == "time_mismatch":
+            td = diag.get("best_time_diff_hours")
+            td_txt = f" (closest pair {td:.1f}h apart)" if td else ""
+            st.warning(
+                f"Found {fixtures_fetched} fixture(s) and {odds_fetched} odds event(s), "
+                f"but event times don't align{td_txt}."
+            )
+            st.markdown("**What to try:**")
+            st.markdown("- Check Fix Issues tab for time gap details")
+            st.markdown("- This can happen with timezone parsing issues or stale odds data")
         elif fixtures_fetched and odds_fetched and fixtures_fetched > odds_fetched * 5:
             st.info(
                 f"Found {fixtures_fetched} fixture(s) but only {odds_fetched} odds event(s) \u2014 "
@@ -640,28 +665,53 @@ def show_unmatched_samples(
 ) -> None:
     if not unmatched_fixtures and not unmatched_odds:
         return
-    reason = _diagnose_unmatched(unmatched_fixtures, unmatched_odds)
-    title = (
-        "Unmatched samples (naming issues)"
-        if reason == "naming"
-        else "Unmatched samples (different rounds/dates)"
-    )
+    diag = _diagnose_unmatched(unmatched_fixtures, unmatched_odds)
+    reason = diag["reason"]
+    titles = {
+        "naming": "Unmatched samples (naming issues)",
+        "time_mismatch": "Unmatched samples (time mismatch)",
+        "coverage_gap": "Unmatched samples (different rounds/dates)",
+    }
+    title = titles.get(reason, titles["coverage_gap"])
     with st.expander(title, expanded=False):
         if unmatched_fixtures:
             st.markdown("**Fixtures without matching odds** (top 10)")
             rows = []
             for f in unmatched_fixtures:
-                rows.append({"Home": f["home"], "Away": f["away"], "Time": f["time"]})
+                rows.append({"Home": f["home"], "Away": f["away"], "Time (UTC)": f["time"]})
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
         if unmatched_odds:
             st.markdown("**Odds events without matching fixtures** (top 10)")
             rows = []
             for o in unmatched_odds:
-                rows.append({"Home": o["home"], "Away": o["away"], "Time": o["time"]})
+                rows.append({"Home": o["home"], "Away": o["away"], "Time (UTC)": o["time"]})
             st.dataframe(pd.DataFrame(rows), use_container_width=True, hide_index=True)
+
+        best_score = diag.get("best_name_score", 0)
+        best_td = diag.get("best_time_diff_hours")
+        best_pair = diag.get("best_pair")
+
+        if best_score > 0:
+            detail_parts = [f"Best name similarity: **{best_score}%**"]
+            if best_td is not None:
+                if best_td < 1:
+                    detail_parts.append(f"time gap: **{best_td * 60:.0f} min**")
+                else:
+                    detail_parts.append(f"time gap: **{best_td:.1f}h**")
+            if best_pair:
+                detail_parts.append(
+                    f"closest pair: {best_pair[0]}/{best_pair[1]} vs {best_pair[2]}/{best_pair[3]}"
+                )
+            st.caption(" | ".join(detail_parts))
+
         if reason == "naming":
             st.caption(
                 "Team names look similar but don't match \u2014 aliases may need updating."
+            )
+        elif reason == "time_mismatch":
+            st.caption(
+                "Names match but times are too far apart \u2014 "
+                "possible timezone or round mismatch."
             )
         else:
             st.caption(
@@ -901,15 +951,20 @@ def render_action_strip(run_data: Dict[str, Any]) -> None:
     elif odds_fetched == 0:
         st.info("No odds available yet \u2014 come back closer to game time")
     elif matched == 0 and (unmatched_fx or unmatched_odds):
-        reason = _diagnose_unmatched(unmatched_fx, unmatched_odds)
+        diag = _diagnose_unmatched(unmatched_fx, unmatched_odds)
+        reason = diag["reason"]
         if reason == "naming":
             st.warning("Fixtures and odds found but names don't match")
+        elif reason == "time_mismatch":
+            td = diag.get("best_time_diff_hours")
+            td_txt = f" ({td:.1f}h apart)" if td else ""
+            st.warning(f"Fixtures and odds found but times don't align{td_txt}")
         else:
             st.info("Fixtures and odds cover different rounds")
         ac1, ac2 = st.columns(2)
         with ac1:
-            if reason == "naming":
-                st.caption("Check the Fix Issues tab for name details")
+            if reason in ("naming", "time_mismatch"):
+                st.caption("Check the Fix Issues tab for details")
         with ac2:
             if st.button("Extend lookahead to 21 days", key="action_extend_lookahead"):
                 st.session_state["lookahead_days"] = 21

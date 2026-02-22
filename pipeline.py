@@ -9,6 +9,7 @@ from features import build_elo_ratings, elo_win_prob
 from odds_fetch import fetch_odds_for_window, get_odds_provider_name, probe_odds_provider
 from odds_extract import extract_moneylines, consensus_decimal
 from mapper import match_games_to_odds, _parse_iso
+from time_utils import to_naive_utc, parse_iso_utc
 from value_engine import implied_probability, edge, expected_value
 from league_defaults import get_elo_params, DEFAULTS
 from league_map import LEAGUE_MAP
@@ -253,6 +254,58 @@ def get_unmatched(
             unmatched_odds.append({"home": h, "away": a, "time": str(t)[:19]})
 
     return unmatched_fixtures[:10], unmatched_odds[:10]
+
+
+def summarize_match_time_deltas(
+    matched: List[Dict[str, Any]],
+) -> Dict[str, Any]:
+    deltas = []
+    suspicious = []
+    for m in matched:
+        fx = m["fixture"]
+        og = m["odds_game"]
+        td = m.get("time_delta_hours")
+        if td is not None:
+            deltas.append(td)
+            if td > 12:
+                fx_time = to_naive_utc(fx.start_time_utc)
+                og_time = _parse_iso(og.get("scheduledTime", ""))
+                suspicious.append({
+                    "fixture": f"{fx.home} vs {fx.away}",
+                    "fx_time": str(fx_time)[:19] if fx_time else "?",
+                    "odds_time": og.get("scheduledTime", "?")[:19],
+                    "delta_h": round(td, 1),
+                    "confidence": m.get("match_confidence", 0),
+                })
+        else:
+            fx_dt = to_naive_utc(fx.start_time_utc)
+            og_dt = _parse_iso(og.get("scheduledTime", ""))
+            if fx_dt and og_dt:
+                td_calc = abs((fx_dt - og_dt).total_seconds()) / 3600
+                deltas.append(td_calc)
+                if td_calc > 12:
+                    suspicious.append({
+                        "fixture": f"{fx.home} vs {fx.away}",
+                        "fx_time": str(fx_dt)[:19],
+                        "odds_time": og.get("scheduledTime", "?")[:19],
+                        "delta_h": round(td_calc, 1),
+                        "confidence": m.get("match_confidence", 0),
+                    })
+
+    if not deltas:
+        return {"count": len(matched), "median_h": None, "max_h": None, "gt_12h": 0, "gt_24h": 0, "suspicious": []}
+
+    deltas.sort()
+    median = deltas[len(deltas) // 2]
+    return {
+        "count": len(matched),
+        "with_times": len(deltas),
+        "median_h": round(median, 2),
+        "max_h": round(max(deltas), 2),
+        "gt_12h": sum(1 for d in deltas if d > 12),
+        "gt_24h": sum(1 for d in deltas if d > 24),
+        "suspicious": suspicious[:10],
+    }
 
 
 def compute_values(

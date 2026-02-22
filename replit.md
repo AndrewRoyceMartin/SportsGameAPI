@@ -9,6 +9,7 @@ A Streamlit-based sports prediction application that finds value bets by compari
 - `ui_helpers.py` - Reusable UI components: diagnostics panel, reason-coded empty states, unmatched samples, sorting presets, column toggles, harvest games display, results explainer, save controls, saved picks table
 - `config_env.py` - Centralized environment audit: required/stale secret checks, startup validation
 - `apify_client.py` - Unified Apify REST client (run actor, get dataset items)
+- `time_utils.py` - Centralised time normalisation: parse_iso_utc (any ISO→aware UTC), to_naive_utc (strip tz), iso_utc (format as ...Z string)
 - `connectivity.py` - Lightweight connectivity checks for SofaScore (HTTP ping) and Apify (token validation via /v2/users/me); cached 5 min
 - `stats_provider.py` - SofaScore API client with Game dataclass, multi-sport support (football, basketball, ice-hockey, american-football, baseball, tennis, mma)
 - `league_map.py` - Maps league labels to SofaScore filters and Harvest actor league keys; groups leagues into Production vs Experimental; LEAGUE_SPORT mapping for sport filter UI

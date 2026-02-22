@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import logging
 import re
-from datetime import datetime, timedelta
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
 from zoneinfo import ZoneInfo
+
+from time_utils import iso_utc
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +72,9 @@ def _parse_sportsbet_datetime(event_time: str) -> Optional[datetime]:
                         parsed = parsed.replace(year=now_utc.year + 1)
                     elif (parsed - naive_now).days > 330:
                         parsed = parsed.replace(year=now_utc.year - 1)
-                return parsed
+                local_dt = parsed.replace(tzinfo=_SYDNEY_TZ)
+                utc_dt = local_dt.astimezone(timezone.utc).replace(tzinfo=None)
+                return utc_dt
             except ValueError:
                 continue
 
@@ -141,9 +145,7 @@ def _to_harvest_format(
     away_odds: Optional[float],
     start_utc: Optional[datetime],
 ) -> Dict[str, Any]:
-    scheduled_time = ""
-    if start_utc:
-        scheduled_time = start_utc.strftime("%Y-%m-%dT%H:%M:%SZ")
+    scheduled_time = iso_utc(start_utc)
 
     odds_entry: Dict[str, Any] = {
         "sportsbook": "Sportsbet",

@@ -7,11 +7,13 @@ from typing import Any, Dict, List, Optional
 
 from thefuzz import fuzz
 
+from time_utils import parse_iso_utc, to_naive_utc
+
 TIME_WINDOW_HOURS = 4
 FUZZY_THRESHOLD = 60
 NAME_ONLY_THRESHOLD = 75
 
-_AU_TIME_WINDOW_HOURS = 6
+_AU_TIME_WINDOW_HOURS = 24
 _AU_FUZZY_THRESHOLD = 55
 _AU_NAME_ONLY_THRESHOLD = 70
 
@@ -158,20 +160,8 @@ def _name_score(a: str, b: str) -> int:
 
 
 def _parse_iso(s: str) -> Optional[datetime]:
-    if not s or not isinstance(s, str):
-        return None
-    cleaned = re.sub(r"\.\d+", "", s.strip())
-    for fmt in (
-        "%Y-%m-%dT%H:%M:%SZ",
-        "%Y-%m-%dT%H:%M:%S",
-        "%Y-%m-%d %H:%M",
-        "%Y-%m-%d",
-    ):
-        try:
-            return datetime.strptime(cleaned, fmt)
-        except ValueError:
-            continue
-    return None
+    dt = parse_iso_utc(s)
+    return to_naive_utc(dt)
 
 
 def match_games_to_odds(
@@ -191,10 +181,11 @@ def match_games_to_odds(
     for fx in fixtures:
         fx_home = fx.home
         fx_away = fx.away
-        fx_dt = fx.start_time_utc
+        fx_dt = to_naive_utc(fx.start_time_utc)
 
         best_score = 0
         best_odds_game = None
+        best_delta_h: Optional[float] = None
 
         for og in harvest_games:
             og_home = og.get("homeTeam", {}).get("mediumName", "")
@@ -205,9 +196,10 @@ def match_games_to_odds(
             both_have_time = fx_dt is not None and og_dt is not None
             if not both_have_time and league in _TEAM_SPORT_LEAGUES:
                 continue
-            if both_have_time:
-                diff = abs((fx_dt - og_dt).total_seconds())
-                if diff > tw * 3600:
+            diff_h: Optional[float] = None
+            if both_have_time and fx_dt is not None and og_dt is not None:
+                diff_h = abs((fx_dt - og_dt).total_seconds()) / 3600
+                if diff_h > tw:
                     continue
 
             home_sc = _name_score(fx_home, og_home)
@@ -222,9 +214,20 @@ def match_games_to_odds(
 
             threshold = ft if both_have_time else no_time_ft
 
+            if is_au and both_have_time and diff_h is not None:
+                if avg_score >= 85 and diff_h <= 24:
+                    pass
+                elif avg_score >= 70 and diff_h <= 12:
+                    pass
+                elif avg_score >= ft and diff_h <= 6:
+                    pass
+                else:
+                    continue
+
             if avg_score >= threshold and avg_score > best_score:
                 best_score = avg_score
                 best_odds_game = og
+                best_delta_h = diff_h
 
         if best_odds_game:
             matched.append(
@@ -232,6 +235,7 @@ def match_games_to_odds(
                     "fixture": fx,
                     "odds_game": best_odds_game,
                     "match_confidence": best_score,
+                    "time_delta_hours": best_delta_h,
                 }
             )
 

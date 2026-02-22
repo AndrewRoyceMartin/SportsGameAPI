@@ -35,6 +35,7 @@ from pipeline import (
     preflight_availability,
     preflight_scan,
     preflight_with_odds_probe,
+    summarize_match_time_deltas,
 )
 from ui_helpers import (
     show_diagnostics,
@@ -793,6 +794,42 @@ def main():
                 matched=run_data.get("matched"),
                 value_bets=run_data.get("value_bets_count"),
             )
+
+            td_info = run_data.get("time_deltas")
+            if td_info and td_info.get("with_times"):
+                with st.expander("Match Time Alignment", expanded=False):
+                    tc1, tc2, tc3, tc4 = st.columns(4)
+                    tc1.metric("Matched pairs", td_info["count"])
+                    tc2.metric("Median gap", f"{td_info['median_h']:.1f}h" if td_info["median_h"] is not None else "N/A")
+                    tc3.metric("Max gap", f"{td_info['max_h']:.1f}h" if td_info["max_h"] is not None else "N/A")
+                    gt12 = td_info.get("gt_12h", 0)
+                    gt24 = td_info.get("gt_24h", 0)
+                    if gt24 > 0:
+                        tc4.metric("Suspicious (>24h)", gt24)
+                    elif gt12 > 0:
+                        tc4.metric("Wide gap (>12h)", gt12)
+                    else:
+                        tc4.metric("All within 12h", "Yes")
+
+                    suspicious = td_info.get("suspicious", [])
+                    if suspicious:
+                        st.markdown("**Suspicious matches (>12h time gap)**")
+                        import pandas as _pd
+                        sus_rows = []
+                        for s in suspicious:
+                            sus_rows.append({
+                                "Game": s["fixture"],
+                                "Fixture time": s["fx_time"],
+                                "Odds time": s["odds_time"],
+                                "Gap (h)": s["delta_h"],
+                                "Name score": s["confidence"],
+                            })
+                        st.dataframe(_pd.DataFrame(sus_rows), use_container_width=True, hide_index=True)
+                    elif td_info["max_h"] is not None and td_info["max_h"] < 2:
+                        st.success("All matched pairs have times within 2 hours — alignment looks good.")
+                    else:
+                        st.info("No suspicious time gaps detected.")
+
             if run_data.get("unmatched_fx") or run_data.get("unmatched_odds"):
                 show_unmatched_samples(
                     run_data.get("unmatched_fx", []),
@@ -1166,6 +1203,8 @@ def _run_pipeline(
         matched = match_fixtures_to_odds(upcoming, harvest_games, league=league_label)
         run_data["matched"] = len(matched)
         run_data["matched_list"] = matched
+        if matched:
+            run_data["time_deltas"] = summarize_match_time_deltas(matched)
 
         unmatched_fx, unmatched_odds = get_unmatched(upcoming, harvest_games, matched or [])
         run_data["unmatched_fx"] = unmatched_fx

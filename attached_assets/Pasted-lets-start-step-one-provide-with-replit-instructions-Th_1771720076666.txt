@@ -1,0 +1,368 @@
+lets start step one. provide with replit instructions
+Thought for 42s
+
+Perfect — let’s start with Step 1: Date/Time mismatch audit + hardening (this is the highest-value first step before changing prediction logic).
+
+What Step 1 will do
+
+Make sure fixture times and odds times are being compared correctly across:
+
+Sportsbet (AU local times / AEST/AEDT style strings)
+
+SofaScore (UTC / ISO)
+
+Mapper matching logic
+
+UI display vs internal matching time
+
+This will stop false “no match” outcomes and reduce bad pick quality caused by pairing the wrong events (or failing to pair the right ones).
+
+Replit Instructions — Step 1 (Date Mismatch Paths)
+1) Create a single “time normalisation + diagnostics” helper
+
+Create a new file:
+
+time_utils.py
+
+Add a small utility module that:
+
+parses UTC ISO strings safely
+
+ensures all internal comparison times are naive UTC or timezone-aware UTC (pick one and use it everywhere)
+
+emits debug-friendly labels
+
+Use this structure (adapt to your style):
+
+from __future__ import annotations
+
+from datetime import datetime, timezone
+from typing import Optional, Union
+import re
+
+def parse_iso_utc(s: str) -> Optional[datetime]:
+    """Parse common ISO strings and return timezone-aware UTC datetime."""
+    if not s or not isinstance(s, str):
+        return None
+
+    cleaned = s.strip()
+    # handle Z suffix
+    if cleaned.endswith("Z"):
+        cleaned = cleaned[:-1] + "+00:00"
+
+    # remove fractional seconds if inconsistent
+    cleaned = re.sub(r"(\.\d+)(?=[+-]\d{2}:\d{2}$)", "", cleaned)
+    cleaned = re.sub(r"(\.\d+)$", "", cleaned)
+
+    try:
+        dt = datetime.fromisoformat(cleaned)
+    except ValueError:
+        # fallback formats
+        for fmt in ("%Y-%m-%d %H:%M", "%Y-%m-%d"):
+            try:
+                dt = datetime.strptime(cleaned.replace("+00:00", ""), fmt)
+                dt = dt.replace(tzinfo=timezone.utc)
+                return dt
+            except ValueError:
+                continue
+        return None
+
+    if dt.tzinfo is None:
+        # treat naive ISO from odds sources as UTC only if that's how your pipeline already stores it
+        dt = dt.replace(tzinfo=timezone.utc)
+    else:
+        dt = dt.astimezone(timezone.utc)
+
+    return dt
+
+
+def to_naive_utc(dt: Optional[datetime]) -> Optional[datetime]:
+    """Convert any datetime to naive UTC (if your code compares naive objects)."""
+    if dt is None:
+        return None
+    if dt.tzinfo is None:
+        return dt
+    return dt.astimezone(timezone.utc).replace(tzinfo=None)
+
+
+def iso_utc(dt: Optional[datetime]) -> str:
+    if dt is None:
+        return ""
+    if dt.tzinfo is None:
+        # assume already UTC-naive
+        return dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+    return dt.astimezone(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+2) Standardise Sportsbet parsed times at the source
+File: sportsbet_odds.py
+
+You already parse eventTime and create scheduledTime.
+
+Goal
+
+Make sure _parse_sportsbet_datetime() returns a timezone-aware UTC datetime OR a naive UTC datetime consistently (match what the rest of your code expects).
+
+Action
+
+Keep parsing local AU event strings correctly (AEST/AEDT)
+
+Convert to UTC exactly once
+
+Then use the helper iso_utc() when writing scheduledTime
+
+In _to_harvest_format(...)
+
+Replace manual strftime(...) with helper:
+
+from time_utils import iso_utc
+...
+scheduled_time = iso_utc(start_utc)
+Add debug fields (temporary, optional but recommended)
+
+For a week or two, include temporary metadata for diagnostics (can remove later):
+
+return {
+    ...
+    "scheduledTime": scheduled_time,
+    "_debug": {
+        "parsed_source_time_utc": scheduled_time,
+        "source": "sportsbet"
+    },
+    "odds": [odds_entry],
+}
+
+This makes mismatches obvious in Diagnostics.
+
+3) Standardise odds-side time parsing in mapper.py
+File: mapper.py
+
+You currently use _parse_iso() and compare fx.start_time_utc vs scheduledTime.
+
+This is a common mismatch point.
+
+Action
+
+Replace _parse_iso() implementation with time_utils.parse_iso_utc() and convert both sides into the same shape before comparison.
+
+Example changes
+from time_utils import parse_iso_utc, to_naive_utc
+
+Inside match_games_to_odds(...):
+
+fx_dt = to_naive_utc(fx.start_time_utc)  # if fixture dt may be tz-aware
+...
+og_dt = to_naive_utc(parse_iso_utc(og_time_str))
+
+Then compare:
+
+both_have_time = fx_dt is not None and og_dt is not None
+if both_have_time:
+    diff_hours = abs((fx_dt - og_dt).total_seconds()) / 3600
+    if diff_hours > tw:
+        continue
+4) Add time-diff diagnostics to unmatched samples
+File: ui_helpers.py
+
+Right now your unmatched diagnostics classify naming vs coverage_gap using name similarity (and you’ve improved this nicely). Add time evidence so you can see if it’s really a date mismatch.
+
+Update unmatched sample rows to include:
+
+Fixture UTC time
+
+Odds UTC time
+
+Best candidate time difference (hours)
+
+Best name score
+
+If you don’t want to do full pairwise display yet, add a quick summary caption in show_unmatched_samples() like:
+
+“Closest name match found, but time gap was 11.9h”
+
+“Closest match is 6.2 days away”
+
+This will immediately expose:
+
+timezone offset bugs
+
+round mismatch
+
+stale odds
+
+duplicated future round lines
+
+5) Add a “time sanity check” function in pipeline diagnostics
+File: pipeline.py (or odds_fetch.py, whichever owns matching orchestration)
+
+Add a small function that inspects matched pairs and logs:
+
+count matched
+
+median time delta
+
+max time delta
+
+any matches > 12h
+
+any matches > 24h (should be suspicious except special cases)
+
+Example pseudo:
+
+def summarize_match_time_deltas(matched):
+    deltas = []
+    for m in matched:
+        fx = m["fixture"]
+        og = m["odds_game"]
+        fx_dt = to_naive_utc(getattr(fx, "start_time_utc", None))
+        og_dt = to_naive_utc(parse_iso_utc(og.get("scheduledTime", "")))
+        if fx_dt and og_dt:
+            deltas.append(abs((fx_dt - og_dt).total_seconds()) / 3600)
+    ...
+
+Log it to server console and optionally expose in Fix Issues tab.
+
+This is one of the fastest ways to confirm whether date mismatches are driving poor real-world outcomes.
+
+6) Hard stop for impossible time matches (safety guard)
+File: mapper.py
+
+You widened AU window to 24h (good practical fix), but add a secondary safety rule to prevent false positives:
+
+Suggested rule (for AU leagues only)
+
+If names are not very strong, don’t allow huge time gaps.
+
+Example:
+
+If avg_score >= 85, allow up to 24h
+
+If avg_score 70–84, allow only up to 12h
+
+If avg_score < 70, require <= 6h
+
+This protects against accidental cross-round matches when team names partially overlap.
+
+Pseudo inside loop:
+
+if both_have_time and is_au:
+    diff_h = abs((fx_dt - og_dt).total_seconds()) / 3600
+    if avg_score >= 85 and diff_h <= 24:
+        pass
+    elif avg_score >= 70 and diff_h <= 12:
+        pass
+    elif avg_score >= ft and diff_h <= 6:
+        pass
+    else:
+        continue
+7) Check AU daylight saving handling explicitly (important)
+
+This is likely one of the hidden issues.
+
+Why this matters
+
+Sportsbet strings may effectively behave like:
+
+AEST (UTC+10) part of year
+
+AEDT (UTC+11) during daylight savings
+
+If parser assumes AEST year-round, your offsets will be wrong by 1 hour for months.
+
+Action
+
+In _parse_sportsbet_datetime():
+
+Use a real timezone (Australia/Sydney) if possible (zoneinfo)
+
+Parse local datetime in Sydney timezone, then convert to UTC
+
+Example:
+
+from zoneinfo import ZoneInfo
+SYD = ZoneInfo("Australia/Sydney")
+...
+local_dt = local_dt.replace(tzinfo=SYD)
+utc_dt = local_dt.astimezone(timezone.utc)
+
+If your current parser manually subtracts a fixed offset, replace it.
+
+8) Add a one-click “Date Mismatch Debug” test snippet in Replit shell
+
+Run this after changes (single league first, AFL/NRL ideal):
+
+python - << 'PY'
+from datetime import date, timedelta
+from stats_provider import get_upcoming_games
+from odds_fetch import fetch_harvest_games  # or your actual function
+from mapper import match_games_to_odds
+
+league = "AFL"
+fixtures = get_upcoming_games(league, date_from=date.today(), date_to=date.today()+timedelta(days=21))
+odds_games = fetch_harvest_games(league)  # adjust to your function name
+
+print("fixtures:", len(fixtures))
+print("odds:", len(odds_games))
+
+matched = match_games_to_odds(fixtures, odds_games, league=league)
+print("matched:", len(matched))
+
+for m in matched[:10]:
+    fx = m["fixture"]
+    og = m["odds_game"]
+    print(
+        fx.home, "vs", fx.away,
+        "| fx:", getattr(fx, "start_time_utc", None),
+        "| og:", og.get("scheduledTime"),
+        "| conf:", m.get("match_confidence")
+    )
+PY
+What you’re looking for
+
+Same event names roughly matching
+
+Times within sensible gap (ideally < 12h)
+
+No weird date shifts (e.g., off by 1 day unexpectedly)
+
+9) Add visible columns in Fix Issues tab (temporary)
+
+In your availability / diagnostics tables, add:
+
+Fixture window used (e.g., 7d / 21d)
+
+Odds provider
+
+Odds event time basis (UTC parsed)
+
+Time mismatch warnings count
+
+This will make debugging much faster from GUI without terminal work.
+
+10) Acceptance criteria for Step 1 (done checklist)
+
+Before moving to algorithm improvement, confirm these:
+
+ Sportsbet times parse using Australia/Sydney timezone (DST-safe)
+
+ scheduledTime stored consistently as UTC ISO (...Z)
+
+ mapper.py compares fixture and odds times in the same datetime type (both naive UTC or both aware UTC)
+
+ Matched pair diagnostics show realistic deltas
+
+ Unmatched diagnostics distinguish naming vs coverage vs time mismatch
+
+ AU leagues no longer require “overly wide” windows just to match obvious games (or if they do, we can explain exactly why)
+
+Why this matters for prediction accuracy
+
+Right now, if date matching is off, your model can:
+
+pair the wrong odds line to the wrong fixture,
+
+skip the right game and keep weak alternatives,
+
+produce fake edge values,
+
+hurt both backtests and live picks.
+
+So this step improves data integrity first, which is the foundation before upgrading the prediction engine.
