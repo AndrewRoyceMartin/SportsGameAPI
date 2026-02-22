@@ -1,0 +1,351 @@
+Replit’s assessment is solid, and it aligns with the right direction.
+
+The key improvement from their suggestion is this:
+
+Users should not orchestrate the pipeline
+
+The app should run availability + odds probe + matching + filtering automatically
+
+Diagnostics should appear only when needed
+
+That’s exactly the right UX principle for your app now.
+
+Combined Recommendation (best of both plans)
+The best path forward
+
+Use a guided default experience and keep expert tooling available.
+
+Core idea
+
+Default = “Find Bets” (simple, one-click flow)
+
+Advanced = hidden behind expanders / Settings
+
+Diagnostics = inline when something fails
+
+Trust/Tuning/Backtest = still available, but not blocking the main path
+
+This gives you:
+
+fast everyday usability
+
+retained power for tuning accuracy
+
+fewer user mistakes
+
+less “why is this empty?” confusion
+
+Final UX structure to build (recommended)
+Tabs (reduce to 3)
+1) Find Bets (default)
+
+This becomes the main working screen:
+
+league selection
+
+one-click scan
+
+top picks cards
+
+bet builder / shortlist
+
+optional “show all results”
+
+inline diagnostics if no results
+
+2) My Picks
+
+saved picks
+
+result marking (won/lost/void)
+
+rolling performance stats
+
+tier/confidence hit rate summaries
+
+3) Settings & Model
+
+Contains the expert tools:
+
+profiles
+
+advanced filters
+
+Elo tuning
+
+backtest
+
+diagnostics
+
+provider/odds debug panels
+
+This preserves all your current features without forcing them into the main workflow.
+
+What to change in behavior (most important)
+1) Make “Find Value Bets” do everything automatically
+
+When user clicks Find Value Bets, the app should internally do:
+
+Check fixtures (SofaScore)
+
+Probe/fetch odds (Harvest or Sportsbet)
+
+Match fixtures to odds
+
+Compute values
+
+Apply filters
+
+Show results (or a precise reason why not)
+
+User should not need to click “Check Availability” first
+
+Keep “Check Availability” as a secondary / small link button (optional), but not required.
+
+2) Replace “Check Availability” as a required step with “pre-scan readiness”
+
+Before scan results render (or during progress), show:
+
+Fixtures found ✅/❌
+
+Odds provider + raw odds count ✅/❌
+
+Matched games ✅/❌
+
+Tuned/default model status ✅/ℹ️
+
+This gives the same transparency, but without requiring manual workflow.
+
+3) Merge Place Bets + Browse All into one page
+
+Replit is right here.
+
+In Find Bets tab:
+
+Top picks cards first (actionable)
+
+“Show all matched games” expander below (discovery)
+
+“Show near misses” toggle inside that expander
+
+This reduces tab switching and keeps context.
+
+4) Keep a visible “Next Best Action” panel
+
+This is still one of your strongest UX improvements.
+
+Examples:
+
+“No fixtures found in 7-day window. Try 21 days for AFL preseason.”
+
+“Odds provider returned 0 events. This is a provider issue, not your settings.”
+
+“Matched games found but no bets passed filters. Lower edge to 2% or confidence to 60%.”
+
+“Using default Elo settings. Run Quick Calibrate for better league-specific picks.”
+
+This is what makes the app feel smart.
+
+How to make the app more useful for accuracy, not just usability
+
+You asked for usability and better picks. UX should support the prediction workflow.
+
+Recommended default flow in Find Bets
+
+Select league
+
+Scan (automatic pipeline)
+
+If model not tuned for that league:
+
+show “Quick Calibrate Recommended”
+
+one button to run quick calibrate
+
+Re-scan with tuned params (one click)
+
+Review top picks
+
+Add to bet builder
+
+This teaches the user the right order without making them think about it.
+
+What to keep visible vs hide
+Keep visible (default)
+
+League selector
+
+Find Value Bets (main button)
+
+Confidence target (minimum model confidence)
+
+Min edge
+
+Odds range preset
+
+Quick Calibrate (secondary button)
+
+Top picks cards
+
+Bet builder summary / shortlist
+
+Hide in “Advanced” expander
+
+Elo parameter controls (K, home advantage, half-life, scale)
+
+Scan profiles internals
+
+Odds provider diagnostics
+
+Raw mapping/debug tables
+
+Backtest controls (or link to Settings & Model)
+
+Naming changes that will improve comprehension immediately
+
+These are small but high-impact.
+
+Confidence Target → Minimum model confidence
+
+Trust & Tuning → Settings & Model
+
+Fix Issues → remove tab; show inline diagnostics
+
+Browse All → move into “Show all matches” expander
+
+Quick Calibrate → Quick tune model (this league)
+
+Tooltips should explain:
+
+model confidence
+
+market implied probability
+
+edge
+
+quality score
+
+why a pick is ranked highly
+
+Recommended implementation plan (staged, low-risk for Replit)
+Stage 1 (UX foundation, highest value)
+
+Goal: Make Find Bets one-click and reduce cognitive load.
+
+Changes
+
+Create/rename default tab to Find Bets
+
+Keep existing tabs but begin consolidation
+
+Make Find Value Bets run full pipeline automatically (including availability/odds probing)
+
+Add progress/status strip during scan
+
+Add Next Best Action panel
+
+Move most controls into Advanced expander
+
+Render top picks + all results in one page
+
+✅ Biggest usability win with minimal algorithm risk.
+
+Stage 2 (Tab consolidation)
+
+Goal: Reduce clutter and unify workflow.
+
+Changes
+
+Merge Place Bets + Browse All into Find Bets
+
+Move Fix Issues into inline diagnostics + optional Settings panel
+
+Keep My Picks (Track Results)
+
+Rename Trust & Tuning to Settings & Model
+
+✅ Cleaner information architecture.
+
+Stage 3 (Model workflow guidance)
+
+Goal: Help users get more accurate predictions by following the right sequence.
+
+Changes
+
+Detect whether league has tuned Elo params
+
+If not tuned, show “Quick tune model recommended”
+
+After quick tuning, prompt to re-scan
+
+Add “Scan using tuned params” confirmation badge
+
+Optional: one-click “Quick tune + scan”
+
+✅ Improves real-world use of your new calibration system.
+
+Stage 4 (Advanced trust & diagnostics polish)
+
+Goal: Keep expert visibility without cluttering daily use.
+
+Changes
+
+Inline diagnostic expander only when no results / warnings
+
+Provider/raw counts/match counts shown in compact trust panel
+
+Deep debug tables still available in Settings & Model
+
+✅ Power users stay happy, normal users stay focused.
+
+Replit instructions (copy/paste)
+
+Use this as your next instruction to Replit (kept staged to avoid overload):
+
+Use the current app and helper structure, but refactor the UX to make the app much easier to use for finding bets.
+
+Implement Stage 1 only (incremental, app-safe):
+
+GOAL
+Make the default experience a simple one-click scan flow where the user does NOT need to manually run Check Availability first.
+
+CHANGES TO IMPLEMENT
+1) Make the main/default workflow tab "Find Bets" (you can rename or repurpose the current Place Bets tab).
+2) In Find Bets, keep only the essential controls visible by default:
+   - League selector
+   - Find Value Bets button (primary)
+   - Quick tune model (this league) button (secondary)
+   - Minimum model confidence
+   - Min edge
+   - Odds range preset
+3) Move non-essential controls (profiles, advanced filters, debug options, tuning parameters, etc.) into an "Advanced" expander (collapsed by default).
+4) Change Find Value Bets so it automatically performs the full pipeline in one click:
+   - fixtures check
+   - odds probe/fetch
+   - matching
+   - value computation
+   - filtering
+   - result rendering
+   Reuse existing availability/odds probing logic internally (do not remove it).
+5) Add a scan progress/status panel (or progress bar) that clearly shows pipeline stages while scanning.
+6) Add a persistent "Next Best Action" panel near the top of Find Bets that explains exactly what the user should do next based on state/results.
+   Examples:
+   - no fixtures -> extend lookahead / switch league
+   - odds empty -> provider issue / try later
+   - no matches -> likely round/date mismatch
+   - no bets -> lower min edge / confidence target
+   - model defaults active -> recommend quick tuning
+7) Keep diagnostics contextual:
+   - If the scan fails or returns no results, show inline diagnostic summary/expander in Find Bets (reuse current diagnostic helpers where possible).
+   - Do NOT force users to switch tabs to understand no-result states.
+8) In Find Bets results area, show:
+   - top picks cards first
+   - shortlist/bet builder summary
+   - "Show all matches/results" expander below (instead of requiring a separate Browse All tab for normal use)
+   Reuse existing render helpers (hero card, pick cards, quick filters, bet builder, shortlist summary) where possible.
+
+CONSTRAINTS
+- Keep all current advanced functionality intact (backtest, tuning, diagnostics, saved picks).
+- Do not remove existing tabs yet; this is a Stage 1 UX refactor only.
+- Preserve session_state keys and existing pipeline logic as much as possible.
+- Keep changes incremental and app-running-safe.

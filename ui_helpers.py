@@ -69,6 +69,75 @@ def inject_action_styles():
     )
 
 
+def render_next_best_action(
+    league_label: str,
+    run_data: Optional[Dict[str, Any]] = None,
+    has_tuned_params: bool = False,
+    missing_secrets: Optional[List[str]] = None,
+) -> None:
+    if missing_secrets:
+        st.warning(
+            f"Missing required secrets: **{', '.join(missing_secrets)}**. "
+            "Add them in Settings to enable live odds."
+        )
+        return
+
+    if run_data is None:
+        tips = []
+        if not has_tuned_params:
+            tips.append("Use **Quick Tune Model** to improve predictions for this league before scanning.")
+        tips.append("Click **Find Value Bets** to scan for profitable betting opportunities.")
+        with st.container(border=True):
+            st.markdown("**Next step**")
+            for t in tips:
+                st.markdown(f"  {t}")
+        return
+
+    vb = run_data.get("value_bets", [])
+    odds_fetched = run_data.get("odds_fetched", 0)
+    fixtures_fetched = run_data.get("fixtures_fetched")
+    matched = run_data.get("matched")
+    vb_count = run_data.get("value_bets_count", len(vb))
+
+    if vb_count > 0:
+        if not has_tuned_params:
+            st.info("Using default model settings. **Quick Tune Model** may improve pick accuracy.")
+        return
+
+    with st.container(border=True):
+        st.markdown("**Why no bets were found**")
+        if odds_fetched == 0:
+            st.markdown("The odds provider returned no data. This is usually a provider issue, not your settings.")
+            st.markdown("- Try again later or switch to a different league")
+        elif fixtures_fetched is not None and fixtures_fetched == 0:
+            st.markdown("No upcoming fixtures found in the current window.")
+            st.markdown("- Try extending the lookahead window in Advanced settings")
+        elif matched is not None and matched == 0:
+            st.markdown("Fixtures and odds were found but couldn't be matched together.")
+            st.markdown("- This usually means different rounds or a time/naming mismatch")
+            st.markdown("- Check the diagnostics below for details")
+        else:
+            st.markdown("All matched games were checked but none passed your filters.")
+            st.markdown("- Lower the minimum edge threshold")
+            st.markdown("- Widen the odds range")
+
+
+def render_scan_progress(stage: str, detail: str = "") -> Tuple[int, str]:
+    stages = {
+        "elo": ("Building Elo ratings", 15),
+        "odds": ("Fetching live odds", 35),
+        "fixtures": ("Fetching upcoming fixtures", 55),
+        "align": ("Checking time alignment", 65),
+        "match": ("Matching fixtures to odds", 75),
+        "compute": ("Computing value bets", 90),
+        "done": ("Done", 100),
+    }
+    label, pct = stages.get(stage, ("Processing...", 50))
+    if detail:
+        label = f"{label} — {detail}"
+    return pct, label
+
+
 def render_funnel_stepper(
     league_label: str,
     profile: str,

@@ -72,16 +72,15 @@ SofaScore provides fixtures/results via sport-specific endpoints (basketball, ic
 14. Unmatched samples expander shows fixtures/odds that failed to pair
 15. 3-outcome leagues: dedup best side per match, require explicit save opt-in, tag as experimental
 
-## UI Features
-- **5-tab layout**: Place Bets (card-based shortlist + bet builder), Browse All (discovery table), Trust & Tuning (backtesting), Fix Issues (diagnostics), Track Results (feedback loop)
-- **3-step funnel stepper**: Top of Place Bets shows Scan → Risk → Review workflow with current rules pills (edge %, odds range, lookahead, confidence)
-- **Best Bet Right Now**: Hero card with "Why this is #1" one-liner, quarter-Kelly stake suggestion, risk tag, confidence calibration hint
-- **Quick Filters**: Above cards — Starts in (6h/24h/3d/All), Tier (A/B/C), Risk (Low/Medium/High) for browsing picks
-- **Shortlist summary**: Portfolio view when Best Bets Mode ON — picks count, avg edge, avg confidence, avg quality, earliest start, estimated outlay
-- **Bet Builder**: Right column layout with A-tier count, all picks list, stake input, total outlay, Copy as Text, CSV export with Quality/Tier columns
+## UI Features (Stage 1 UX Refactor)
+- **3-tab layout**: Find Bets (one-click pipeline + results), Settings & Model (backtest/tuning/diagnostics), My Picks (outcome tracking)
+- **Streamlined sidebar**: Essential controls visible (Sport, League, Confidence, Min Edge, Odds Range); advanced options in collapsed "Advanced" expander (Run Profile, Best Bets Mode, Max Results, History/Lookahead, Availability Check, Reset Defaults)
+- **Next Best Action panel**: Context-aware guidance at top of Find Bets tab (suggests first scan, tune model, fix issues etc.)
+- **One-click pipeline**: "Find Value Bets" button runs full pipeline automatically (no separate availability check required)
+- **Quick Tune Model button**: Secondary action to jump to backtest/tuning
 - **Pick card hierarchy**: Top row = team/time/badges/risk, Middle row = Model%/Market%/Edge/Odds (big metrics), Bottom = collapsed Details expander (quality breakdown, Elo, games, why explainer, quarter-Kelly stake)
-- **Action strip with buttons**: Actionable session_state mutations — "Lower edge to X%", "Widen odds range", "Extend lookahead to 21 days", "Switch to Aggressive"
-- **Browse All discovery**: Edge slider (without changing defaults), near-misses toggle (show bets 1-2% below threshold), recomputes values at lower thresholds
+- **Merged results view**: Top picks as cards with "Show all results" expander below for full table
+- **Inline diagnostics**: When scan returns no results, shows reason-coded messages with actionable suggestions
 - **Track Results feedback loop**: Won/Lost/Void buttons on each pending pick, rolling stats panel (Record W-L-V, Hit Rate, ROI, Total P/L), hit rate by quality tier, hit rate by confidence bucket
 - **AU season banner**: Preseason warning for AFL/NRL/NBL during Jan-Mar months
 - **Confidence Target**: First-class sidebar control (Any/55%+/60%+/65%+/70%+) filtering by minimum model probability
@@ -93,7 +92,7 @@ SofaScore provides fixtures/results via sport-specific endpoints (basketball, ic
 - **Column tooltips**: Hover help text on all key columns (Confidence, Edge, EV, Action, Quality, Tier) explaining what each metric means
 - **Risk tags**: Low (edge>=10%, mature), Medium (edge>=5% or developing), High (early/low edge)
 - **Sport filter**: Filter leagues by sport category (All, Basketball, Football, Hockey, MMA, Soccer)
-- **Run profiles**: Conservative (higher edge, tighter odds), Balanced (league defaults), Aggressive (lower edge, wider odds)
+- **Run profiles**: Conservative (higher edge, tighter odds), Balanced (league defaults), Aggressive (lower edge, wider odds) — in Advanced expander
 - **Sorting presets**: Sort by Best Quality, Best EV, Highest Edge, Soonest Start, Best Confidence
 - **Column toggles**: Show/hide columns including Quality and Tier columns
 - **AU timezone display**: AFL/NRL/NBL games show local AEDT time with UTC secondary
@@ -121,11 +120,9 @@ SofaScore provides fixtures/results via sport-specific endpoints (basketball, ic
 - **Elo parameter tuning**: Grid search over K-factor (10-30) and home advantage (-30 to +80) scored by log loss + accuracy; shows current vs best params with top 20 combos
 
 ## UI Tabs
-1. **Place Bets** - Hero card + card-based shortlist of top value bets with quality badges, bet builder, and save controls
-2. **Browse All** - Full sortable table with all value bets, column toggles, sort presets, near-miss toggle, edge slider
-3. **Trust & Tuning** - Test Elo model against historical results with accuracy, Brier score, log loss, bucket lift metrics + apply optimised settings
-4. **Fix Issues** - Pipeline stats, unmatched samples, odds source info, error details
-5. **Track Results** - Won/Lost/Void outcome tracking, rolling stats (ROI, hit rate by tier/confidence), P/L history
+1. **Find Bets** - One-click pipeline with Next Best Action guidance, top picks as cards, "Show all results" expander, inline diagnostics
+2. **Settings & Model** - Backtest expander (accuracy, Brier, log loss, bucket lift), Tune Elo Parameters expander, Pipeline Diagnostics expander
+3. **My Picks** - Saved picks history with Won/Lost/Void outcome tracking, rolling stats (ROI, hit rate by tier/confidence), P/L history
 
 ## Running
 ```
