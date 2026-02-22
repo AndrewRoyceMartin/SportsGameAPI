@@ -8,7 +8,7 @@ from stats_provider import get_upcoming_games, get_results_history, Game, clear_
 from features import build_elo_ratings, elo_win_prob
 from odds_fetch import fetch_odds_for_window, get_odds_provider_name, probe_odds_provider
 from odds_extract import extract_moneylines, consensus_decimal
-from mapper import match_games_to_odds, _parse_iso
+from mapper import match_games_to_odds, _parse_iso, detect_time_offset, apply_time_offset
 from time_utils import to_naive_utc, parse_iso_utc
 from value_engine import implied_probability, edge, expected_value
 from league_defaults import get_elo_params, DEFAULTS

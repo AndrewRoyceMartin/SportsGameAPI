@@ -164,6 +164,130 @@ def _parse_iso(s: str) -> Optional[datetime]:
     return to_naive_utc(dt)
 
 
+_MIN_PAIRS_FOR_OFFSET = 4
+
+
+def detect_time_offset(
+    fixtures: list,
+    harvest_games: List[Dict[str, Any]],
+    league: str = "",
+) -> Dict[str, Any]:
+    is_au = league in _AU_LEAGUES
+    name_threshold = 75 if is_au else 70
+
+    fx_times = []
+    for fx in fixtures:
+        dt = to_naive_utc(fx.start_time_utc)
+        if dt is not None:
+            fx_times.append(dt)
+    if not fx_times:
+        return {"offset_hours": 0.0, "confidence": "none", "pairs_checked": 0, "applied": False, "pairs": []}
+    fx_min = min(fx_times)
+    fx_max = max(fx_times)
+    from datetime import timedelta as _td
+    window_start = fx_min - _td(days=2)
+    window_end = fx_max + _td(days=2)
+
+    pairs = []
+    seen_fx = set()
+    for fx in fixtures:
+        fx_dt = to_naive_utc(fx.start_time_utc)
+        if fx_dt is None:
+            continue
+        fx_key = (fx.home, fx.away)
+        if fx_key in seen_fx:
+            continue
+
+        best_pair = None
+        best_name = 0
+        for og in harvest_games:
+            og_home = og.get("homeTeam", {}).get("mediumName", "")
+            og_away = og.get("awayTeam", {}).get("mediumName", "")
+            og_dt = _parse_iso(og.get("scheduledTime", ""))
+            if og_dt is None:
+                continue
+            if og_dt < window_start or og_dt > window_end:
+                continue
+
+            home_sc = _name_score(fx.home, og_home)
+            away_sc = _name_score(fx.away, og_away)
+            avg = (home_sc + away_sc) / 2
+
+            home_sc_flip = _name_score(fx.home, og_away)
+            away_sc_flip = _name_score(fx.away, og_home)
+            avg_flip = (home_sc_flip + away_sc_flip) / 2
+
+            best = max(avg, avg_flip)
+            if best >= name_threshold and best > best_name:
+                best_name = best
+                delta_h = (og_dt - fx_dt).total_seconds() / 3600
+                best_pair = {
+                    "fixture": f"{fx.home} vs {fx.away}",
+                    "odds": f"{og_home} vs {og_away}",
+                    "fx_time": str(fx_dt)[:19],
+                    "odds_time": str(og_dt)[:19],
+                    "delta_h": round(delta_h, 2),
+                    "name_score": best,
+                }
+
+        if best_pair:
+            pairs.append(best_pair)
+            seen_fx.add(fx_key)
+
+    if not pairs:
+        return {"offset_hours": 0.0, "confidence": "none", "pairs_checked": 0, "applied": False, "pairs": []}
+
+    deltas = [p["delta_h"] for p in pairs]
+    deltas.sort()
+    median_offset = deltas[len(deltas) // 2]
+
+    within_2h = sum(1 for d in deltas if abs(d - median_offset) <= 2)
+    consistency = within_2h / len(deltas) if deltas else 0
+
+    enough_pairs = len(pairs) >= _MIN_PAIRS_FOR_OFFSET
+
+    if abs(median_offset) < 1.5:
+        confidence = "low"
+        should_apply = False
+    elif consistency >= 0.6 and abs(median_offset) >= 1.5 and enough_pairs:
+        confidence = "high"
+        should_apply = True
+    elif consistency >= 0.4 and enough_pairs:
+        confidence = "medium"
+        should_apply = abs(median_offset) >= 3
+    else:
+        confidence = "low"
+        should_apply = False
+
+    return {
+        "offset_hours": round(median_offset, 2),
+        "confidence": confidence,
+        "consistency": round(consistency, 2),
+        "pairs_checked": len(pairs),
+        "should_apply": should_apply,
+        "applied": False,
+        "pairs": pairs[:20],
+    }
+
+
+def apply_time_offset(
+    harvest_games: List[Dict[str, Any]],
+    offset_hours: float,
+) -> List[Dict[str, Any]]:
+    from datetime import timedelta as _td
+    corrected = []
+    for og in harvest_games:
+        og_copy = dict(og)
+        og_time_str = og_copy.get("scheduledTime", "")
+        og_dt = _parse_iso(og_time_str)
+        if og_dt is not None:
+            corrected_dt = og_dt - _td(hours=offset_hours)
+            og_copy["scheduledTime"] = corrected_dt.strftime("%Y-%m-%dT%H:%M:%SZ")
+            og_copy["_original_scheduledTime"] = og_time_str
+        corrected.append(og_copy)
+    return corrected
+
+
 def match_games_to_odds(
     fixtures: list,
     harvest_games: List[Dict[str, Any]],

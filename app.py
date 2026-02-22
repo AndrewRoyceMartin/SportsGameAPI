@@ -36,6 +36,8 @@ from pipeline import (
     preflight_scan,
     preflight_with_odds_probe,
     summarize_match_time_deltas,
+    detect_time_offset,
+    apply_time_offset,
 )
 from ui_helpers import (
     show_diagnostics,
@@ -795,9 +797,47 @@ def main():
                 value_bets=run_data.get("value_bets_count"),
             )
 
+            offset_info = run_data.get("time_offset")
+            if offset_info and offset_info.get("pairs_checked", 0) > 0:
+                with st.expander("Pre-Match Time Alignment", expanded=True):
+                    oc1, oc2, oc3 = st.columns(3)
+                    oc1.metric("Detected offset", f"{offset_info['offset_hours']:+.1f}h")
+                    oc2.metric("Consistency", f"{offset_info.get('consistency', 0):.0%}")
+                    oc3.metric("Pairs scanned", offset_info["pairs_checked"])
+
+                    if offset_info.get("applied"):
+                        st.success(
+                            f"Auto-corrected odds times by **{offset_info['offset_hours']:+.1f} hours** "
+                            f"before matching. This recovered games that would have been missed due to "
+                            f"a clock mismatch between the fixture source and odds source."
+                        )
+                    elif abs(offset_info.get("offset_hours", 0)) < 1.5:
+                        st.success("Fixture and odds times are well aligned — no correction needed.")
+                    else:
+                        conf = offset_info.get("confidence", "low")
+                        st.warning(
+                            f"Detected a **{offset_info['offset_hours']:+.1f}h** offset but confidence "
+                            f"is {conf} (consistency {offset_info.get('consistency', 0):.0%}). "
+                            f"Not auto-correcting — some games may be missed."
+                        )
+
+                    if offset_info.get("pairs"):
+                        import pandas as _pd_off
+                        pair_rows = []
+                        for p in offset_info["pairs"][:10]:
+                            pair_rows.append({
+                                "Fixture": p["fixture"],
+                                "Odds event": p["odds"],
+                                "Fixture time": p["fx_time"],
+                                "Odds time": p["odds_time"],
+                                "Delta (h)": p["delta_h"],
+                                "Name score": p["name_score"],
+                            })
+                        st.dataframe(_pd_off.DataFrame(pair_rows), use_container_width=True, hide_index=True)
+
             td_info = run_data.get("time_deltas")
             if td_info and td_info.get("with_times"):
-                with st.expander("Match Time Alignment", expanded=False):
+                with st.expander("Post-Match Time Gaps", expanded=False):
                     tc1, tc2, tc3, tc4 = st.columns(4)
                     tc1.metric("Matched pairs", td_info["count"])
                     tc2.metric("Median gap", f"{td_info['median_h']:.1f}h" if td_info["median_h"] is not None else "N/A")
@@ -1199,8 +1239,20 @@ def _run_pipeline(
             )
             return [], run_data
 
+        progress.progress(65, text="Checking time alignment between fixtures and odds...")
+        offset_info = detect_time_offset(upcoming, harvest_games, league=league_label)
+        run_data["time_offset"] = offset_info
+        odds_for_matching = harvest_games
+        if offset_info.get("should_apply") and abs(offset_info.get("offset_hours", 0)) >= 1.5:
+            offset_h = offset_info["offset_hours"]
+            odds_for_matching = apply_time_offset(harvest_games, offset_h)
+            offset_info["applied"] = True
+            progress.progress(68, text=f"Corrected {offset_info['pairs_checked']} odds times by {offset_h:+.1f}h...")
+        elif offset_info.get("pairs_checked", 0) > 0:
+            progress.progress(68, text=f"Time alignment OK (offset {offset_info['offset_hours']:+.1f}h, {offset_info['pairs_checked']} pairs checked)...")
+
         progress.progress(70, text=f"Matching {len(upcoming)} fixtures to {games_with_odds} odds events...")
-        matched = match_fixtures_to_odds(upcoming, harvest_games, league=league_label)
+        matched = match_fixtures_to_odds(upcoming, odds_for_matching, league=league_label)
         run_data["matched"] = len(matched)
         run_data["matched_list"] = matched
         if matched:
