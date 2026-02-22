@@ -59,5 +59,25 @@ def check_apify(timeout: float = 8.0) -> ConnStatus:
         return ConnStatus("Apify", False, detail=str(e)[:80])
 
 
+def check_sportsbet(timeout: float = 8.0) -> ConnStatus:
+    url = "https://www.sportsbet.com.au/betting/australian-rules/afl"
+    headers = {"User-Agent": "Mozilla/5.0 SportsGameAPI/1.0"}
+    t0 = time.time()
+    try:
+        r = requests.get(url, headers=headers, timeout=timeout, allow_redirects=True)
+        ms = int((time.time() - t0) * 1000)
+        if r.status_code == 200:
+            return ConnStatus("Sportsbet", True, ms, "OK")
+        if r.status_code == 403:
+            return ConnStatus("Sportsbet", True, ms, "Reachable (geo-restricted)")
+        return ConnStatus("Sportsbet", False, ms, f"HTTP {r.status_code}")
+    except requests.Timeout:
+        return ConnStatus("Sportsbet", False, detail="Timeout")
+    except requests.ConnectionError:
+        return ConnStatus("Sportsbet", False, detail="Connection failed")
+    except Exception as e:
+        return ConnStatus("Sportsbet", False, detail=str(e)[:80])
+
+
 def check_all() -> list[ConnStatus]:
-    return [check_sofascore(), check_apify()]
+    return [check_sofascore(), check_apify(), check_sportsbet()]
