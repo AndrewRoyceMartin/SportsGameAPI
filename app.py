@@ -1031,6 +1031,23 @@ def _render_picks(
 
             if run_data.get("unmatched_fx") or run_data.get("unmatched_odds"):
                 st.caption("Some games couldn't be matched \u2014 check the Fix Issues tab for details.")
+    elif not _do_find:
+        prev = st.session_state.get("last_run_data")
+        if prev and prev.get("value_bets") and prev.get("league_label") == league_label:
+            value_bets = prev["value_bets"]
+            render_action_strip(prev)
+            if value_bets:
+                render_hero_card(value_bets[0])
+                if best_bets_mode:
+                    render_shortlist_summary(value_bets)
+                filtered_bets = render_quick_filters(value_bets, key_prefix="picks_qf")
+                col_left, col_right = st.columns([3, 1])
+                with col_left:
+                    render_pick_cards(filtered_bets, league_label)
+                with col_right:
+                    render_bet_builder(filtered_bets, league_label)
+                if prev.get("unmatched_fx") or prev.get("unmatched_odds"):
+                    st.caption("Some games couldn't be matched \u2014 check the Fix Issues tab for details.")
 
 
 def _render_all_leagues_picks(
@@ -1159,6 +1176,21 @@ def _render_all_leagues_picks(
                 render_pick_cards(filtered_bets, "All Leagues")
             with col_right:
                 render_bet_builder(filtered_bets, "All Leagues")
+    else:
+        prev = st.session_state.get("last_run_data")
+        if prev and prev.get("value_bets") and prev.get("league_label") == "All Leagues":
+            value_bets = prev["value_bets"]
+            render_action_strip(prev)
+            if value_bets:
+                render_hero_card(value_bets[0])
+                if best_bets_mode:
+                    render_shortlist_summary(value_bets)
+                filtered_bets = render_quick_filters(value_bets, key_prefix="all_qf")
+                col_left, col_right = st.columns([3, 1])
+                with col_left:
+                    render_pick_cards(filtered_bets, "All Leagues")
+                with col_right:
+                    render_bet_builder(filtered_bets, "All Leagues")
 
 
 def _run_pipeline(
